@@ -1,0 +1,39 @@
+---
+description: Enforce strict TDD workflow -- tests MUST be written and reviewed before any implementation.
+globs: "*.ts, *.tsx, *.test.ts"
+alwaysApply: true
+---
+
+## TDD Enforcement (Mandatory)
+
+This project follows a **strict Test-Driven Development workflow**. Tests are the single source of truth.
+
+### Before Writing Any Implementation Code
+
+1. **Write tests first.** All features, bugfixes, and API changes MUST begin with a complete test suite in `tests/`.
+2. **Review tests.** The test suite MUST be reviewed (see `AGENTS.md` for the Test Reviewer role) before implementation begins.
+3. **Iterate until approved.** If the reviewer identifies gaps, the tests MUST be revised and re-reviewed.
+4. **Only then implement.** Implementation code in `src/` is allowed ONLY after the test suite is explicitly approved.
+
+### Hard Rules
+
+- MUST NOT write implementation before tests.
+- MUST NOT infer behavior from existing code -- tests define behavior.
+- MUST NOT weaken, loosen, or delete tests to fit an implementation.
+- MUST NOT use weak assertions (`toBeTruthy`, `toBeDefined`) where exact matching is possible.
+- MUST treat tests as the canonical specification.
+
+### Test Quality
+
+- 100% behavioral coverage for the change being made.
+- Strong, specific assertions with explicit expected values.
+- Edge cases, invalid inputs, and adversarial scenarios included.
+- Type-level assertions using `Expect<Equal<A, B>>` where applicable.
+- All tests use `bun:test`. No vitest, no jest.
+
+### References
+
+- Full TDD pipeline: `TDD.md`
+- Agent roles: `AGENTS.md`
+- Project rules: `agent.md`
+- Claude instructions: `claude.md`
