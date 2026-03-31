@@ -1,0 +1,110 @@
+name: Publish to npm
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+
+permissions:
+  contents: read
+
+jobs:
+  precheck:
+    name: Version gate
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.version_check.outputs.changed }}
+      package_name: ${{ steps.version_check.outputs.package_name }}
+      package_version: ${{ steps.version_check.outputs.package_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check npm for existing version
+        id: version_check
+        shell: bash
+        run: |
+          PKG_NAME="$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).name" < /dev/null)"
+          PKG_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).version" < /dev/null)"
+
+          echo "package_name=$PKG_NAME" >> "$GITHUB_OUTPUT"
+          echo "package_version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+
+          echo "Checking npm for: ${PKG_NAME}@${PKG_VERSION}"
+
+          if npm view "${PKG_NAME}@${PKG_VERSION}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "Version already exists on npm; skipping remaining jobs."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Version not found on npm; continuing."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    needs: precheck
+    if: needs.precheck.outputs.changed == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run tests
+        run: bun test tests/
+
+  publish:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    needs: [precheck, test]
+    if: needs.precheck.outputs.changed == 'true'
+    environment: deploy
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Configure npm auth
+        run: |
+          cat > .npmrc <<'EOF'
+          //registry.npmjs.org/:_authToken=${NPM_TOKEN}
+          registry=https://registry.npmjs.org
+          always-auth=true
+          EOF
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish
+        run: npm publish --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

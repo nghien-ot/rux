@@ -2,7 +2,7 @@ import { defineConfig } from "vite"
 import dts from "vite-plugin-dts"
 
 export default defineConfig({
-    plugins: [dts({ rollupTypes: true, exclude: ["tests/**"] })],
+    plugins: [dts({ rollupTypes: true, exclude: ["tests/**", ".qa/**"] })],
     build: {
         lib: {
             entry: "src/index.ts",

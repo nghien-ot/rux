@@ -1,7 +1,16 @@
 {
   "name": "rux",
   "type": "module",
-  "version": "0.0.1",
+  "description": "A declarative, type-safe HTTP client for TypeScript with zero runtime dependencies.",
+  "keywords": [
+    "http",
+    "client",
+    "typescript",
+    "declarative",
+    "type-safe",
+    "zero-runtime-dependencies"
+  ],
+  "version": "0.0.1-development",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -11,8 +20,8 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",
-    "test": "bun test tests/ ./.local/live-api.test.ts",
-    "qa:manual": "bun run build && bun test ./.local/text.ts"
+    "test": "bun test tests/ ./.qa/live-api.test.ts",
+    "qa:manual": "bun run build && bun test ./.qa/text.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
