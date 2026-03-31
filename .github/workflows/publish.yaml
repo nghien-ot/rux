@@ -94,7 +94,7 @@ jobs:
       - name: Configure npm auth
         run: |
           cat > .npmrc <<'EOF'
-          @nghienot:registry=https://registry.npmjs.org
+          @nghien-ot:registry=https://registry.npmjs.org
           //registry.npmjs.org/:_authToken=${NPM_TOKEN}
           registry=https://registry.npmjs.org
           always-auth=true

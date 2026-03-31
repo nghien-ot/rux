@@ -1,5 +1,5 @@
 {
-  "name": "@nghienot/rux",
+  "name": "@nghien-ot/rux",
   "type": "module",
   "description": "A declarative, type-safe HTTP client for TypeScript with zero runtime dependencies.",
   "keywords": [
@@ -13,12 +13,12 @@
   "version": "0.1.1-dev",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nghienot/rux.git"
+    "url": "git+https://github.com/nghien-ot/rux.git"
   },
   "bugs": {
-    "url": "https://github.com/nghienot/rux/issues"
+    "url": "https://github.com/nghien-ot/rux/issues"
   },
-  "homepage": "https://github.com/nghienot/rux#readme",
+  "homepage": "https://github.com/nghien-ot/rux#readme",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",

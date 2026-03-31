@@ -24,19 +24,19 @@ Define your API with `defineClient` and get typed endpoint methods, runtime vali
 ## Installation
 
 ```bash
-bun add @nghienot/rux
+bun add @nghien-ot/rux
 ```
 
 Or with npm/pnpm:
 
 ```bash
-npm install @nghienot/rux
+npm install @nghien-ot/rux
 ```
 
 ## Quick start
 
 ```typescript
-import { defineClient } from "@nghienot/rux";
+import { defineClient } from "@nghien-ot/rux";
 
 const userResponse = {
   type: "object",
@@ -90,7 +90,7 @@ Use **`:id[string]`** (or `[number]` / `[boolean]`) so `params` is typed and seg
 Optional object fields use `{ type: "string", optional: true }`. Nullable fields use `nullable: true`.
 
 ```typescript
-import type { SchemaToType } from "@nghienot/rux";
+import type { SchemaToType } from "@nghien-ot/rux";
 
 type User = SchemaToType<typeof userResponse>;
 ```
@@ -105,7 +105,7 @@ type User = SchemaToType<typeof userResponse>;
 - **Second argument:** pass exactly one key per call (not a union of keys). TypeScript will only accept keys that make sense for the endpoint (e.g. GET/DELETE do not allow `"body"`).
 
 ```typescript
-import type { Infer } from "@nghienot/rux";
+import type { Infer } from "@nghien-ot/rux";
 
 const userResponse = {
   type: "object",
@@ -235,7 +235,7 @@ Default header merge order: `content-type`, auth, client `headers`, endpoint `he
 ### `unwrapOrThrow` / `unwrapOrDefault`
 
 ```typescript
-import { unwrapOrThrow, unwrapOrDefault } from "@nghienot/rux";
+import { unwrapOrThrow, unwrapOrDefault } from "@nghien-ot/rux";
 
 const result = await api.getUser({ params: { id: "1" } });
 const user = unwrapOrThrow(result);
@@ -245,7 +245,7 @@ const safe = unwrapOrDefault(result, { id: "", name: "?", email: "" });
 ### Standalone validation
 
 ```typescript
-import { validate, validateResponse, handleValidation } from "@nghienot/rux";
+import { validate, validateResponse, handleValidation } from "@nghien-ot/rux";
 
 const schema = {
   type: "object",
@@ -330,7 +330,7 @@ interface RuxError {
 bun install
 bun run build      # emit dist/
 bun run test       # tests/ + ./.qa/live-api.test.ts (live tests skip unless RUN_LIVE_API=1)
-bun run qa:manual  # build + manual QA against `import "@nghienot/rux"` (see .qa/test.ts)
+bun run qa:manual  # build + manual QA against `import "@nghien-ot/rux"` (see .qa/test.ts)
 ```
 
 Optional live smoke tests (network): set `RUN_LIVE_API=1` and run `bun test ./.qa/live-api.test.ts` (documented in `MANUAL_QA.md`).
