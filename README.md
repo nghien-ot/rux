@@ -1,12 +1,17 @@
 # Rux
 
+[![GitHub](https://img.shields.io/badge/GitHub-repository-181717?logo=github)](https://github.com/nghienot/rux)
+
+> [!WARNING]
+> **Development preview** — This library is still in active development. **Breaking changes are expected** until a stable **1.x** release. Pin dependency versions and check release notes before upgrading.
+
 A declarative, type-safe HTTP client for TypeScript with zero runtime dependencies.
 
 Define your API with `defineClient` and get typed endpoint methods, runtime validation for bodies and responses, and flexible error handling.
 
 ## Features
 
-- **Zero runtime dependencies** — no Zod, no neverthrow, no external runtime libraries
+- **Zero runtime dependencies** — no third-party runtime packages; schemas are plain objects
 - **Declarative schemas** — plain object literals; use `as const` where you want literal inference
 - **Compile-time inference** — `SchemaToType` / `Infer` derive TypeScript types from schemas
 - **Path params** — bracket DSL `:name[string]`, `:name[number]`, `:name[boolean]` for typed `params` and URL substitution
@@ -120,8 +125,6 @@ const endpoints = {
 type GetUserResponse = Infer<(typeof endpoints)["getUser"], "response">;
 type GetUserPath = Infer<(typeof endpoints)["getUser"], "path">;
 type GetUserParams = Infer<(typeof endpoints)["getUser"], "params">;
-
-// If you previously used InferEndpointResponse<...>, replace it with Infer<..., "response">.
 ```
 
 After `defineClient`, use `typeof api.getUser` the same way:

@@ -86,7 +86,7 @@ type QueryCallField<Q extends QueryParamsDef | undefined> =
     : { query?: Record<string, string> };
 
 // ---------------------------------------------------------------------------
-// Result type (replaces neverthrow)
+// Result type
 // ---------------------------------------------------------------------------
 
 export type RuxResult<T> =

@@ -10,7 +10,15 @@
     "type-safe",
     "zero-runtime-dependencies"
   ],
-  "version": "0.0.5-development",
+  "version": "0.1.0-development",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nghienot/rux.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nghienot/rux/issues"
+  },
+  "homepage": "https://github.com/nghienot/rux#readme",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",

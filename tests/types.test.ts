@@ -315,7 +315,7 @@ test("T-INF-12: Infer<EndpointFn> defaults to response", () => {
   type _T = Expect<Equal<Got, SchemaToType<UserResponse>>>;
 });
 
-test("T-INF-13: Infer<EndpointDef, response> matches InferEndpointResponse", () => {
+test("T-INF-13: Infer<EndpointDef, response> matches internal response helper", () => {
   const ep = {
     method: "GET" as const,
     path: "/users/:id[string]" as const,
@@ -325,8 +325,8 @@ test("T-INF-13: Infer<EndpointDef, response> matches InferEndpointResponse", () 
     },
   } satisfies EndpointDef;
   type FromInfer = Infer<typeof ep, "response">;
-  type FromLegacy = InferEndpointResponse<typeof ep>;
-  type _T = Expect<Equal<FromInfer, FromLegacy>>;
+  type FromHelper = InferEndpointResponse<typeof ep>;
+  type _T = Expect<Equal<FromInfer, FromHelper>>;
 });
 
 test("T-INF-14: Infer<EndpointDef, path> and params", () => {

@@ -2,32 +2,32 @@
  * Manual QA against the built package (`import "@nghienot/rux"` → dist).
  * Run: `bun run qa:manual` or `bun test .local/text.ts` after `bun run build`.
  */
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import {
-  defineClient,
-  unwrapOrThrow,
-  unwrapOrDefault,
-  validate,
-  validateResponse,
-  handleValidation,
-} from "@nghienot/rux";
 import type {
   AuthConfig,
-  RuxResult,
-  RuxError,
-  ValidPath,
-  SchemaToType,
-  ExtractPathParams,
   Infer,
-  ModeReturn,
+  RuxError,
+  RuxResult,
   Schema,
+  SchemaToType,
+} from "@nghienot/rux";
+import {
+  defineClient,
+  handleValidation,
+  unwrapOrDefault,
+  unwrapOrThrow,
+  validate,
+  validateResponse,
 } from "@nghienot/rux";
 import type {
   CallOptions,
   EndpointFn,
-  QueryParamsToType,
+  ExtractPathParams,
   InferKeysFor,
+  ModeReturn,
+  QueryParamsToType,
+  ValidPath,
 } from "@nghienot/rux/src/types/index.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 // ---------------------------------------------------------------------------
 // Compile-time assertions (types from `@nghienot/rux`)

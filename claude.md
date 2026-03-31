@@ -93,7 +93,6 @@ When handling both roles in a single session, you MUST clearly declare role tran
 | `TDD.md`                | Mandatory TDD pipeline specification (4 phases)                         |
 | `AGENTS.md`             | Agent role definitions (Test Author, Test Reviewer)                     |
 
-## Future Integration Points
+## Stable internals
 
-- **Rust/WASM core**: the `executeRequest` function in `src/client/index.ts` is the intended swap point. Its signature (`(baseUrl, endpoint, clientHeaders, callOptions) => Promise<RuxResult<T>>`) must remain stable.
-- **Precompilation/codegen**: potential future optimization for static endpoint definitions. No action needed now.
+- Keep the `executeRequest` signature in `src/client/index.ts` stable: `(baseUrl, endpoint, clientHeaders, callOptions) => Promise<RuxResult<T>>`.

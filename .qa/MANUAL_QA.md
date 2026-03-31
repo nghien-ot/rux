@@ -75,7 +75,7 @@ Schemas in `live-api.test.ts` were aligned to typical responses; re-check with `
 ## Known behaviors and footguns
 
 - **Path substitution** only replaces segments like `:id[string]`, `:n[number]`, `:flag[boolean]`. A plain `:id` in the path string is **not** replaced at runtime.
-- **Typed `params`** in `CallOptions` only appear when the path uses that **bracket DSL**; legacy `:id` gives **no** required `params` at compile time.
+- **Typed `params`** in `CallOptions` only appear when the path uses that **bracket DSL**; a plain `:id` without brackets gives **no** required `params` at compile time.
 - **Client error modes** are `"result"`, `"throw"`, `"fallback"` (with `defaultValue`). **`handleValidation`** uses `"result"`, `"throw"`, and **`"default"`** plus a **`fallback`** argument — different names on purpose.
 - **`unwrapOrThrow`** throws the **`RuxError` object**, not `instanceof Error`.
 - **Query values** that are plain objects (not arrays) are **skipped** when building the query string; `null` becomes an empty string for that key; `undefined` omits the key.
