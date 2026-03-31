@@ -1,5 +1,5 @@
 {
-  "name": "rux",
+  "name": "nghienot/rux",
   "type": "module",
   "description": "A declarative, type-safe HTTP client for TypeScript with zero runtime dependencies.",
   "keywords": [
@@ -10,7 +10,7 @@
     "type-safe",
     "zero-runtime-dependencies"
   ],
-  "version": "0.0.1-development",
+  "version": "0.0.2-development",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
