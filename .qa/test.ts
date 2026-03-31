@@ -18,12 +18,16 @@ import type {
   ValidPath,
   SchemaToType,
   ExtractPathParams,
-  CallOptions,
-  QueryParamsToType,
   Infer,
   ModeReturn,
   Schema,
 } from "@nghienot/rux";
+import type {
+  CallOptions,
+  EndpointFn,
+  QueryParamsToType,
+  InferKeysFor,
+} from "@nghienot/rux/src/types/index.ts";
 
 // ---------------------------------------------------------------------------
 // Compile-time assertions (types from `@nghienot/rux`)
@@ -36,6 +40,20 @@ type Expect<T extends true> = T;
 describe("QA types (compile-time)", () => {
   test("QA-T-01: Infer<string> = string", () => {
     type _T = Expect<Equal<Infer<"string">, string>>;
+  });
+
+  test("QA-T-01b: InferKeysFor on GET-style EndpointFn excludes body", () => {
+    type Fn = EndpointFn<
+      { id: string },
+      "result",
+      "GET",
+      "/u/:id[string]",
+      undefined,
+      undefined
+    >;
+    type Keys = InferKeysFor<Fn>;
+    type HasBody = "body" extends Keys ? true : false;
+    type _T = Expect<Equal<HasBody, false>>;
   });
 
   test("QA-T-02: ExtractPathParams bracket path", () => {

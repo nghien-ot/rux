@@ -1,36 +1,23 @@
 export {
-  defineClient,
-  unwrapOrThrow,
-  unwrapOrDefault,
+  defineClient, unwrapOrDefault, unwrapOrThrow
 } from "./client/index.ts";
 
-export { validate, validateResponse, handleValidation } from "./schema/index.ts";
+export { handleValidation, validate, validateResponse } from "./schema/index.ts";
 
 export type {
-  PrimitiveSchema,
-  PrimitiveObjectSchema,
-  ObjectSchema,
-  ArraySchema,
-  Schema,
-  SchemaToType,
-  ValidPath,
-  ExtractPathParams,
-  RuxResult,
+
+  // Client surface
+  AuthConfig,
+  ClientConfig,
+  EndpointDef,
   ErrorMode,
   HttpMethod,
-  MethodWithBody,
   RuxError,
-  AuthConfig,
-  EndpointDef,
-  ClientConfig,
-  CallOptions,
-  ModeReturn,
-  EndpointFn,
-  RuxClient,
-  QueryParamDef,
-  QueryParamsDef,
-  QueryParamsToType,
-  QueryPrimitiveType,
-  Infer,
-  InferEndpointResponse,
+  RuxResult,
+  // Schema surface
+  Schema,
+  SchemaToType,
+  // Inference (public; access via Infer<> only)
+  Infer
 } from "./types/index.ts";
+

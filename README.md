@@ -90,12 +90,17 @@ import type { SchemaToType } from "@nghienot/rux";
 type User = SchemaToType<typeof userResponse>;
 ```
 
-## `Infer` usage (schema and endpoint response)
+## `Infer` usage (schema, client methods, and endpoint definitions)
 
-`Infer<S>` is a convenience alias for `SchemaToType<S>`.
+`Infer` maps schemas to TypeScript types and can pick a single slice from a client endpoint function or an endpoint definition.
+
+- **Schema:** `Infer<S>` is the same as `SchemaToType<S>`.
+- **Client method:** `Infer<typeof api.getUser, K>` where `K` is one of `"response"`, `"path"`, `"params"`, `"query"`, or `"body"` (only for POST/PUT/PATCH). Omit the second argument to get the response type: `Infer<typeof api.getUser>`.
+- **Endpoint definition:** same keys, e.g. `Infer<(typeof endpoints)["getUser"], "response">`.
+- **Second argument:** pass exactly one key per call (not a union of keys). TypeScript will only accept keys that make sense for the endpoint (e.g. GET/DELETE do not allow `"body"`).
 
 ```typescript
-import type { Infer, InferEndpointResponse } from "@nghienot/rux";
+import type { Infer } from "@nghienot/rux";
 
 const userResponse = {
   type: "object",
@@ -103,12 +108,6 @@ const userResponse = {
 } as const;
 
 type User = Infer<typeof userResponse>; // { id: string; name: string }
-```
-
-You can also infer an endpoint response type directly from an endpoint definition:
-
-```typescript
-import type { InferEndpointResponse } from "@nghienot/rux";
 
 const endpoints = {
   getUser: {
@@ -118,7 +117,17 @@ const endpoints = {
   },
 } as const;
 
-type GetUserResponse = InferEndpointResponse<(typeof endpoints)["getUser"]>;
+type GetUserResponse = Infer<(typeof endpoints)["getUser"], "response">;
+type GetUserPath = Infer<(typeof endpoints)["getUser"], "path">;
+type GetUserParams = Infer<(typeof endpoints)["getUser"], "params">;
+
+// If you previously used InferEndpointResponse<...>, replace it with Infer<..., "response">.
+```
+
+After `defineClient`, use `typeof api.getUser` the same way:
+
+```typescript
+type Id = Infer<typeof api.getUser, "params">["id"];
 ```
 
 ## Usage
