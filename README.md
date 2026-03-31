@@ -1,6 +1,6 @@
 # Rux
 
-[![GitHub](https://img.shields.io/badge/GitHub-repository-181717?logo=github)](https://github.com/nghienot/rux)
+[![GitHub](https://img.shields.io/badge/GitHub-repository-181717?logo=github)](https://github.com/nghien-ot/rux)
 
 > [!WARNING]
 > **Development preview** — This library is still in active development. **Breaking changes are expected** until a stable **1.x** release. Pin dependency versions and check release notes before upgrading.
@@ -78,14 +78,14 @@ Use **`:id[string]`** (or `[number]` / `[boolean]`) so `params` is typed and seg
 
 ## Schema format
 
-| Schema | TypeScript type |
-|--------|-----------------|
-| `"string"` | `string` |
-| `"number"` | `number` |
-| `"boolean"` | `boolean` |
-| `"unknown"` | `unknown` |
+| Schema                                    | TypeScript type                    |
+| ----------------------------------------- | ---------------------------------- |
+| `"string"`                                | `string`                           |
+| `"number"`                                | `number`                           |
+| `"boolean"`                               | `boolean`                          |
+| `"unknown"`                               | `unknown`                          |
 | `{ type: "object", properties: { ... } }` | Object with required/optional keys |
-| `{ type: "array", items: ... }` | `T[]` |
+| `{ type: "array", items: ... }`           | `T[]`                              |
 
 Optional object fields use `{ type: "string", optional: true }`. Nullable fields use `nullable: true`.
 
@@ -180,7 +180,9 @@ If the client uses `errorMode: "fallback"`, every call must supply `defaultValue
 const api = defineClient({
   baseUrl: "https://api.example.com",
   errorMode: "throw",
-  endpoints: { /* ... */ },
+  endpoints: {
+    /* ... */
+  },
 });
 
 const user = await api.getUser({ params: { id: "1" } });
@@ -191,7 +193,7 @@ const user = await api.getUser({ params: { id: "1" } });
 Typed `params` are derived from `:name[string]`, `:name[number]`, or `:name[boolean]` in `path`. Example:
 
 ```typescript
-path: "/users/:id[string]/posts/:postId[number]"
+path: "/users/:id[string]/posts/:postId[number]";
 // params: { id: string; postId: number }
 ```
 
@@ -257,7 +259,10 @@ const checked = validateResponse<typeof schema>(schema, data);
 // Modes for handleValidation use the string "default" (not "fallback"):
 const asResult = handleValidation(schema, data, "result");
 const value = handleValidation(schema, data, "throw");
-const fallback = handleValidation(schema, data, "default", { name: "", age: 0 });
+const fallback = handleValidation(schema, data, "default", {
+  name: "",
+  age: 0,
+});
 ```
 
 **Naming note:** the HTTP client uses `errorMode: "fallback"` and `defaultValue`. **`handleValidation`** uses mode **`"default"`** and a fourth argument named **`fallback`**.
@@ -273,45 +278,45 @@ interface RuxError {
 }
 ```
 
-| `type` | When |
-|--------|------|
-| `network` | `fetch` throws (e.g. DNS, timeout) |
-| `http` | Response status is not 2xx |
+| `type`       | When                                                                  |
+| ------------ | --------------------------------------------------------------------- |
+| `network`    | `fetch` throws (e.g. DNS, timeout)                                    |
+| `http`       | Response status is not 2xx                                            |
 | `validation` | Body/query/response failed schema validation, or response is not JSON |
 
 ## API reference
 
 ### `defineClient(config)`
 
-| Field | Description |
-|-------|-------------|
-| `baseUrl` | Base URL for all requests (`new URL(path, baseUrl)`). Must be valid for the URL parser. |
-| `errorMode` | `"result"` (default), `"throw"`, or `"fallback"` |
-| `headers` | Default headers for all endpoints |
-| `auth` | `AuthConfig` (bearer / basic / custom) |
-| `endpoints` | Map of endpoint definitions |
+| Field       | Description                                                                             |
+| ----------- | --------------------------------------------------------------------------------------- |
+| `baseUrl`   | Base URL for all requests (`new URL(path, baseUrl)`). Must be valid for the URL parser. |
+| `errorMode` | `"result"` (default), `"throw"`, or `"fallback"`                                        |
+| `headers`   | Default headers for all endpoints                                                       |
+| `auth`      | `AuthConfig` (bearer / basic / custom)                                                  |
+| `endpoints` | Map of endpoint definitions                                                             |
 
 ### Endpoint definition
 
-| Field | Description |
-|-------|-------------|
-| `method` | `GET` \| `POST` \| `PUT` \| `PATCH` \| `DELETE` |
-| `path` | Path starting with `/` or `""`; use `:name[string]` (etc.) for substitution |
-| `response` | Schema for the JSON response body |
-| `body` | Optional request body schema (`POST` / `PUT` / `PATCH` only) |
-| `queryParams` | Optional typed query schema |
-| `headers` | Per-endpoint headers |
+| Field         | Description                                                                 |
+| ------------- | --------------------------------------------------------------------------- |
+| `method`      | `GET` \| `POST` \| `PUT` \| `PATCH` \| `DELETE`                             |
+| `path`        | Path starting with `/` or `""`; use `:name[string]` (etc.) for substitution |
+| `response`    | Schema for the JSON response body                                           |
+| `body`        | Optional request body schema (`POST` / `PUT` / `PATCH` only)                |
+| `queryParams` | Optional typed query schema                                                 |
+| `headers`     | Per-endpoint headers                                                        |
 
 ### Call options
 
-| Field | Description |
-|-------|-------------|
-| `params` | Path parameters (when the path uses the bracket DSL) |
-| `query` | Query string values |
-| `body` | JSON body (body methods only) |
-| `headers` | Per-call headers |
-| `errorMode` | Override client error mode |
-| `defaultValue` | Required when using `errorMode: "fallback"` |
+| Field          | Description                                          |
+| -------------- | ---------------------------------------------------- |
+| `params`       | Path parameters (when the path uses the bracket DSL) |
+| `query`        | Query string values                                  |
+| `body`         | JSON body (body methods only)                        |
+| `headers`      | Per-call headers                                     |
+| `errorMode`    | Override client error mode                           |
+| `defaultValue` | Required when using `errorMode: "fallback"`          |
 
 ## Caveats
 
