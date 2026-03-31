@@ -1,5 +1,5 @@
 /**
- * Manual QA against the built package (`import "rux"` → dist).
+ * Manual QA against the built package (`import "@nghienot/rux"` → dist).
  * Run: `bun run qa:manual` or `bun test .local/text.ts` after `bun run build`.
  */
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
@@ -10,7 +10,7 @@ import {
   validate,
   validateResponse,
   handleValidation,
-} from "rux";
+} from "@nghienot/rux";
 import type {
   AuthConfig,
   RuxResult,
@@ -23,10 +23,10 @@ import type {
   Infer,
   ModeReturn,
   Schema,
-} from "rux";
+} from "@nghienot/rux";
 
 // ---------------------------------------------------------------------------
-// Compile-time assertions (types from `rux`)
+// Compile-time assertions (types from `@nghienot/rux`)
 // ---------------------------------------------------------------------------
 
 type Equal<A, B> =

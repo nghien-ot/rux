@@ -3,7 +3,7 @@
  * `bun test` includes this file but skips tests when the env var is unset.
  */
 import { describe, test, expect } from "bun:test";
-import { defineClient } from "rux";
+import { defineClient } from "@nghienot/rux";
 
 const runLive = process.env.RUN_LIVE_API === "1";
 

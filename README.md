@@ -19,19 +19,19 @@ Define your API with `defineClient` and get typed endpoint methods, runtime vali
 ## Installation
 
 ```bash
-bun add rux
+bun add @nghienot/rux
 ```
 
 Or with npm/pnpm:
 
 ```bash
-npm install rux
+npm install @nghienot/rux
 ```
 
 ## Quick start
 
 ```typescript
-import { defineClient } from "rux";
+import { defineClient } from "@nghienot/rux";
 
 const userResponse = {
   type: "object",
@@ -85,9 +85,40 @@ Use **`:id[string]`** (or `[number]` / `[boolean]`) so `params` is typed and seg
 Optional object fields use `{ type: "string", optional: true }`. Nullable fields use `nullable: true`.
 
 ```typescript
-import type { SchemaToType } from "rux";
+import type { SchemaToType } from "@nghienot/rux";
 
 type User = SchemaToType<typeof userResponse>;
+```
+
+## `Infer` usage (schema and endpoint response)
+
+`Infer<S>` is a convenience alias for `SchemaToType<S>`.
+
+```typescript
+import type { Infer, InferEndpointResponse } from "@nghienot/rux";
+
+const userResponse = {
+  type: "object",
+  properties: { id: "string", name: "string" },
+} as const;
+
+type User = Infer<typeof userResponse>; // { id: string; name: string }
+```
+
+You can also infer an endpoint response type directly from an endpoint definition:
+
+```typescript
+import type { InferEndpointResponse } from "@nghienot/rux";
+
+const endpoints = {
+  getUser: {
+    method: "GET",
+    path: "/users/:id[string]",
+    response: userResponse,
+  },
+} as const;
+
+type GetUserResponse = InferEndpointResponse<(typeof endpoints)["getUser"]>;
 ```
 
 ## Usage
@@ -190,7 +221,7 @@ Default header merge order: `content-type`, auth, client `headers`, endpoint `he
 ### `unwrapOrThrow` / `unwrapOrDefault`
 
 ```typescript
-import { unwrapOrThrow, unwrapOrDefault } from "rux";
+import { unwrapOrThrow, unwrapOrDefault } from "@nghienot/rux";
 
 const result = await api.getUser({ params: { id: "1" } });
 const user = unwrapOrThrow(result);
@@ -200,7 +231,7 @@ const safe = unwrapOrDefault(result, { id: "", name: "?", email: "" });
 ### Standalone validation
 
 ```typescript
-import { validate, validateResponse, handleValidation } from "rux";
+import { validate, validateResponse, handleValidation } from "@nghienot/rux";
 
 const schema = {
   type: "object",
@@ -274,18 +305,18 @@ interface RuxError {
 
 - Path substitution only applies to `:name[type]` segments; plain `:id` is left as-is.
 - `JSON.stringify` for `body` is not wrapped: circular data or `BigInt` can cause a rejected promise.
-- For more edge cases and manual QA commands, see [.local/MANUAL_QA.md](.local/MANUAL_QA.md).
+- For more edge cases and manual QA commands, see [`.qa/MANUAL_QA.md`](.qa/MANUAL_QA.md).
 
 ## Development (contributors)
 
 ```bash
 bun install
 bun run build      # emit dist/
-bun run test       # tests/ + ./.local/live-api.test.ts (live tests skip unless RUN_LIVE_API=1)
-bun run qa:manual  # build + manual QA against `import "rux"` (see .local/text.ts)
+bun run test       # tests/ + ./.qa/live-api.test.ts (live tests skip unless RUN_LIVE_API=1)
+bun run qa:manual  # build + manual QA against `import "@nghienot/rux"` (see .qa/test.ts)
 ```
 
-Optional live smoke tests (network): set `RUN_LIVE_API=1` and run `bun test ./.local/live-api.test.ts` (documented in `MANUAL_QA.md`).
+Optional live smoke tests (network): set `RUN_LIVE_API=1` and run `bun test ./.qa/live-api.test.ts` (documented in `MANUAL_QA.md`).
 
 ## License
 

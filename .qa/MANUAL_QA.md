@@ -1,11 +1,11 @@
 # Rux — manual QA (linked `dist`)
 
-This folder exercises the **published entry** (`import … from "rux"` → `dist/`), not `src/`. The canonical automated suite remains in [`tests/`](../tests/).
+This folder exercises the **published entry** (`import … from "@nghienot/rux"` → `dist/`), not `src/`. The canonical automated suite remains in [`tests/`](../tests/).
 
 ## Prerequisites
 
 - [Bun](https://bun.sh) installed
-- From repo root: `bun install` (installs `rux@file:.` into `node_modules/rux` for local resolution)
+- From repo root: `bun install` (installs `@nghienot/rux@file:.` into `node_modules/@nghienot/rux` for local resolution)
 
 ## Build, link (optional), run
 
@@ -15,13 +15,13 @@ This folder exercises the **published entry** (`import … from "rux"` → `dist
    bun run build
    ```
 
-2. **Link** — only if `import "rux"` fails (e.g. you removed `node_modules`). From repo root:
+2. **Link** — only if `import "@nghienot/rux"` fails (e.g. you removed `node_modules`). From repo root:
 
    ```bash
    bun link
    ```
 
-   Then, in this project, `bun link rux` if needed so `node_modules/rux` resolves.
+   Then, in this project, `bun link @nghienot/rux` if needed so `node_modules/@nghienot/rux` resolves.
 
 3. **Manual QA (mocked fetch)** — rebuild + run `.local/text.ts` (Bun requires an explicit `./` path when the filename has no `.test` in it):
 
