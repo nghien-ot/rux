@@ -1,5 +1,5 @@
 {
-  "name": "nghienot/rux",
+  "name": "rux-client",
   "type": "module",
   "description": "A declarative, type-safe HTTP client for TypeScript with zero runtime dependencies.",
   "keywords": [
