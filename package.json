@@ -11,10 +11,12 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",
-    "test": "bun test"
+    "test": "bun test tests/ ./.local/live-api.test.ts",
+    "qa:manual": "bun run build && bun test ./.local/text.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "rux": "file:.",
     "vite": "^8.0.3",
     "vite-plugin-dts": "^4.5.4"
   },

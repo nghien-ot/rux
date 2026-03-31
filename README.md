@@ -2,18 +2,19 @@
 
 A declarative, type-safe HTTP client for TypeScript with zero runtime dependencies.
 
-Define your entire API surface in one place with `defineClient` and get fully typed endpoint methods with compile-time type inference, runtime validation, and flexible error handling.
+Define your API with `defineClient` and get typed endpoint methods, runtime validation for bodies and responses, and flexible error handling.
 
 ## Features
 
-- **Zero dependencies** -- no Zod, no neverthrow, no external runtime libraries
-- **Declarative schemas** -- plain object literals with `as const` for full type inference
-- **Compile-time safety** -- `SchemaToType` infers TypeScript types directly from schemas
-- **Path param inference** -- `:param` segments in paths become required, typed `params` keys
-- **Runtime validation** -- every request body and response validated against schemas
-- **Flexible error handling** -- `result`, `throw`, or `default` mode per-client or per-call
-- **Method-aware types** -- `body` only available on POST/PUT/PATCH at the type level
-- **Auth support** -- bearer, basic, and custom auth out of the box
+- **Zero runtime dependencies** — no Zod, no neverthrow, no external runtime libraries
+- **Declarative schemas** — plain object literals; use `as const` where you want literal inference
+- **Compile-time inference** — `SchemaToType` / `Infer` derive TypeScript types from schemas
+- **Path params** — bracket DSL `:name[string]`, `:name[number]`, `:name[boolean]` for typed `params` and URL substitution
+- **Runtime validation** — request body (when defined), `queryParams` (when defined), and every response body
+- **Error modes** — per-client or per-call: `result`, `throw`, or `fallback` (with `defaultValue`)
+- **Method-aware types** — `body` only on `POST`, `PUT`, `PATCH`
+- **Auth** — bearer, basic, and custom header configuration
+- **Standalone validation** — `validate`, `validateResponse`, `handleValidation` for non-HTTP use
 
 ## Installation
 
@@ -27,12 +28,12 @@ Or with npm/pnpm:
 npm install rux
 ```
 
-## Quick Start
+## Quick start
 
 ```typescript
 import { defineClient } from "rux";
 
-const userSchema = {
+const userResponse = {
   type: "object",
   properties: {
     id: "string",
@@ -47,116 +48,90 @@ const api = defineClient({
   endpoints: {
     getUser: {
       method: "GET",
-      path: "/users/:id",
-      schema: userSchema,
+      path: "/users/:id[string]",
+      response: userResponse,
     },
     createUser: {
       method: "POST",
       path: "/users",
-      schema: userSchema,
-      bodySchema: {
+      response: userResponse,
+      body: {
         type: "object",
         properties: { name: "string", email: "string" },
-      } as const,
+      },
     },
     deleteUser: {
       method: "DELETE",
-      path: "/users/:id",
-      schema: { type: "object", properties: { success: "boolean" } } as const,
+      path: "/users/:id[string]",
+      response: { type: "object", properties: { success: "boolean" } } as const,
     },
   },
 });
 ```
 
-## Schema Format
+Use **`:id[string]`** (or `[number]` / `[boolean]`) so `params` is typed and segments are substituted in the URL. A plain `:id` without brackets is **not** replaced at runtime.
 
-Schemas are plain object literals declared with `as const`. Supported types:
+## Schema format
 
 | Schema | TypeScript type |
-|--------|----------------|
+|--------|-----------------|
 | `"string"` | `string` |
 | `"number"` | `number` |
 | `"boolean"` | `boolean` |
 | `"unknown"` | `unknown` |
-| `{ type: "object", properties: { ... } }` | `{ [key]: ... }` |
+| `{ type: "object", properties: { ... } }` | Object with required/optional keys |
 | `{ type: "array", items: ... }` | `T[]` |
 
-Schemas compose recursively:
-
-```typescript
-const orderSchema = {
-  type: "object",
-  properties: {
-    id: "string",
-    total: "number",
-    items: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          product: "string",
-          quantity: "number",
-        },
-      },
-    },
-  },
-} as const;
-// Inferred type: { id: string; total: number; items: { product: string; quantity: number }[] }
-```
-
-Use `SchemaToType` to extract the type from any schema:
+Optional object fields use `{ type: "string", optional: true }`. Nullable fields use `nullable: true`.
 
 ```typescript
 import type { SchemaToType } from "rux";
 
-type Order = SchemaToType<typeof orderSchema>;
-// { id: string; total: number; items: { product: string; quantity: number }[] }
+type User = SchemaToType<typeof userResponse>;
 ```
 
 ## Usage
 
 ### Result mode (default)
 
-Every call returns `RuxResult<T>`, so you explicitly handle success and failure:
+Each call returns `RuxResult<T>`:
 
 ```typescript
 const result = await api.getUser({ params: { id: "1" } });
 
 if (result.ok) {
-  console.log(result.value); // { id: "...", name: "...", email: "..." }
+  console.log(result.value);
 } else {
-  console.error(result.error); // RuxError
+  console.error(result.error);
 }
 ```
 
 ### Throw mode
 
-Unwraps the result and throws `RuxError` on failure:
+Unwraps success or throws a **`RuxError` object** (not `instanceof Error`):
 
 ```typescript
 const user = await api.getUser({
   params: { id: "1" },
   errorMode: "throw",
 });
-// `user` is typed as { id: string; name: string; email: string }
 ```
 
-### Default mode
+### Fallback mode
 
-Returns a fallback value on failure instead of throwing:
+On failure, returns `defaultValue`:
 
 ```typescript
 const user = await api.getUser({
   params: { id: "1" },
-  errorMode: "default",
+  errorMode: "fallback",
   defaultValue: { id: "", name: "Unknown", email: "" },
 });
-// `user` is always { id: string; name: string; email: string }
 ```
 
-### Client-level error mode
+If the client uses `errorMode: "fallback"`, every call must supply `defaultValue` (or the promise rejects with a clear error).
 
-Set the default for all endpoints at client creation:
+### Client-level error mode
 
 ```typescript
 const api = defineClient({
@@ -166,47 +141,31 @@ const api = defineClient({
 });
 
 const user = await api.getUser({ params: { id: "1" } });
-// Returns T directly, throws on error
 ```
 
-### Type-safe path params
+### Path parameters (bracket DSL)
 
-Path parameters are extracted from the path string at compile time. The `params` field is required when parameters exist and each key is type-checked:
+Typed `params` are derived from `:name[string]`, `:name[number]`, or `:name[boolean]` in `path`. Example:
 
 ```typescript
-// path: "/users/:id" → params: { id: string } is required
-await api.getUser({ params: { id: "1" } });
-
-// Compile errors:
-await api.getUser({});                          // missing 'params'
-await api.getUser({ params: { uid: "1" } });    // 'uid' doesn't exist, expected 'id'
+path: "/users/:id[string]/posts/:postId[number]"
+// params: { id: string; postId: number }
 ```
 
-When the path has no parameters, `params` is not available:
+### Request body
 
-```typescript
-// path: "/users" → no params field
-await api.listUsers();
-```
+Only on `POST`, `PUT`, `PATCH`. With a `body` schema, the payload is typed and validated before `fetch`.
 
-### Type-safe body handling
+### Query string
 
-`body` is only available on endpoints defined with POST, PUT, or PATCH. When `bodySchema` is provided, the body is fully typed:
+- **`query`**: `Record<string, string>` (and values that stringify for arrays — see below). Extra keys are allowed when `queryParams` is defined (they are still appended to the URL).
+- **`queryParams`** on the endpoint: describe typed query arguments (`required`, `nullable`, `type: "array"` with `items`). Invalid query objects fail validation before the request is sent.
 
-```typescript
-// bodySchema infers: { name: string; email: string }
-await api.createUser({ body: { name: "John", email: "john@test.com" } });
-
-// Compile-time error — getUser is GET, no body allowed:
-await api.getUser({ body: {} });
-```
-
-Request bodies are validated at runtime against `bodySchema` before the request is sent.
+Non-array **object** values in `query` are skipped when serializing (no nested JSON in the query string).
 
 ### Auth configuration
 
 ```typescript
-// Bearer token
 const api = defineClient({
   baseUrl: "https://api.example.com",
   auth: { type: "bearer", token: "my-jwt-token" },
@@ -214,45 +173,34 @@ const api = defineClient({
 });
 
 // Basic auth
-const api = defineClient({
-  baseUrl: "https://api.example.com",
-  auth: {
-    type: "basic",
-    credentials: { username: "admin", password: "secret" },
-  },
-  endpoints: { /* ... */ },
-});
+auth: {
+  type: "basic",
+  credentials: { username: "admin", password: "secret" },
+},
 
 // Custom header
-const api = defineClient({
-  baseUrl: "https://api.example.com",
-  auth: {
-    type: "custom",
-    header: { name: "x-api-key", value: "my-key" },
-  },
-  endpoints: { /* ... */ },
-});
+auth: {
+  type: "custom",
+  header: { name: "x-api-key", value: "my-key" },
+},
 ```
 
-### Standalone helpers
+Default header merge order: `content-type`, auth, client `headers`, endpoint `headers`, per-call `headers` (later wins).
 
-For working with `RuxResult` values outside of a client:
+### `unwrapOrThrow` / `unwrapOrDefault`
 
 ```typescript
 import { unwrapOrThrow, unwrapOrDefault } from "rux";
 
 const result = await api.getUser({ params: { id: "1" } });
-
 const user = unwrapOrThrow(result);
-const safeUser = unwrapOrDefault(result, { id: "", name: "?", email: "" });
+const safe = unwrapOrDefault(result, { id: "", name: "?", email: "" });
 ```
 
 ### Standalone validation
 
-Use `validate` and `handleValidation` independently of the HTTP client:
-
 ```typescript
-import { validate, handleValidation } from "rux";
+import { validate, validateResponse, handleValidation } from "rux";
 
 const schema = {
   type: "object",
@@ -260,67 +208,84 @@ const schema = {
 } as const;
 
 validate(schema, { name: "John", age: 30 }); // true
-validate(schema, { name: "John" });           // false (missing 'age')
 
-// Mode-aware validation
-const result = handleValidation(schema, data, "result");   // RuxResult
-const value  = handleValidation(schema, data, "throw");    // T or throws
-const safe   = handleValidation(schema, data, "default", fallback); // T
+const checked = validateResponse<typeof schema>(schema, data);
+
+// Modes for handleValidation use the string "default" (not "fallback"):
+const asResult = handleValidation(schema, data, "result");
+const value = handleValidation(schema, data, "throw");
+const fallback = handleValidation(schema, data, "default", { name: "", age: 0 });
 ```
 
-## Error Types
+**Naming note:** the HTTP client uses `errorMode: "fallback"` and `defaultValue`. **`handleValidation`** uses mode **`"default"`** and a fourth argument named **`fallback`**.
 
-All errors are represented as `RuxError`:
+## Error types
 
 ```typescript
 interface RuxError {
   type: "network" | "validation" | "http";
-  status?: number;  // present for http errors
+  status?: number;
   message: string;
-  cause?: unknown;  // original Error
+  cause?: unknown;
 }
 ```
 
-| Type | When |
-|------|------|
-| `network` | `fetch` itself fails (DNS, timeout, connection refused) |
-| `http` | Server responds with a non-2xx status code |
-| `validation` | Request body or response fails schema validation |
+| `type` | When |
+|--------|------|
+| `network` | `fetch` throws (e.g. DNS, timeout) |
+| `http` | Response status is not 2xx |
+| `validation` | Body/query/response failed schema validation, or response is not JSON |
 
-## API Reference
+## API reference
 
 ### `defineClient(config)`
 
-Creates a typed client instance.
-
-| Config field | Type | Default | Description |
-|-------------|------|---------|-------------|
-| `baseUrl` | `string` | -- | Base URL for all endpoints |
-| `errorMode` | `'result' \| 'throw' \| 'default'` | `'result'` | Default error handling mode |
-| `headers` | `Record<string, string>` | `{}` | Default headers for all requests |
-| `auth` | `AuthConfig` | -- | Auth configuration (bearer/basic/custom) |
-| `endpoints` | `Record<string, EndpointDef>` | -- | Map of endpoint definitions |
+| Field | Description |
+|-------|-------------|
+| `baseUrl` | Base URL for all requests (`new URL(path, baseUrl)`). Must be valid for the URL parser. |
+| `errorMode` | `"result"` (default), `"throw"`, or `"fallback"` |
+| `headers` | Default headers for all endpoints |
+| `auth` | `AuthConfig` (bearer / basic / custom) |
+| `endpoints` | Map of endpoint definitions |
 
 ### Endpoint definition
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `method` | `'GET' \| 'POST' \| 'PUT' \| 'PATCH' \| 'DELETE'` | HTTP method |
-| `path` | `string` | URL path, supports `:param` placeholders (must start with `/`) |
-| `schema` | `Schema` | Response schema for validation and type inference |
-| `bodySchema` | `Schema` | Request body schema (optional, POST/PUT/PATCH only) |
-| `headers` | `Record<string, string>` | Per-endpoint headers |
+| Field | Description |
+|-------|-------------|
+| `method` | `GET` \| `POST` \| `PUT` \| `PATCH` \| `DELETE` |
+| `path` | Path starting with `/` or `""`; use `:name[string]` (etc.) for substitution |
+| `response` | Schema for the JSON response body |
+| `body` | Optional request body schema (`POST` / `PUT` / `PATCH` only) |
+| `queryParams` | Optional typed query schema |
+| `headers` | Per-endpoint headers |
 
 ### Call options
 
-| Field | Type | Availability | Description |
-|-------|------|-------------|-------------|
-| `params` | `Record<string, string>` | When path has `:param` segments | Path parameter substitution (required, type-checked) |
-| `query` | `Record<string, string>` | All methods | Query string parameters |
-| `body` | `SchemaToType<bodySchema>` | POST, PUT, PATCH only | Request body (typed when bodySchema defined) |
-| `headers` | `Record<string, string>` | All methods | Per-call header overrides |
-| `errorMode` | `ErrorMode` | All methods | Override client error mode |
-| `defaultValue` | `T` | With `errorMode: 'default'` | Fallback value |
+| Field | Description |
+|-------|-------------|
+| `params` | Path parameters (when the path uses the bracket DSL) |
+| `query` | Query string values |
+| `body` | JSON body (body methods only) |
+| `headers` | Per-call headers |
+| `errorMode` | Override client error mode |
+| `defaultValue` | Required when using `errorMode: "fallback"` |
+
+## Caveats
+
+- Path substitution only applies to `:name[type]` segments; plain `:id` is left as-is.
+- `JSON.stringify` for `body` is not wrapped: circular data or `BigInt` can cause a rejected promise.
+- For more edge cases and manual QA commands, see [.local/MANUAL_QA.md](.local/MANUAL_QA.md).
+
+## Development (contributors)
+
+```bash
+bun install
+bun run build      # emit dist/
+bun run test       # tests/ + ./.local/live-api.test.ts (live tests skip unless RUN_LIVE_API=1)
+bun run qa:manual  # build + manual QA against `import "rux"` (see .local/text.ts)
+```
+
+Optional live smoke tests (network): set `RUN_LIVE_API=1` and run `bun test ./.local/live-api.test.ts` (documented in `MANUAL_QA.md`).
 
 ## License
 
