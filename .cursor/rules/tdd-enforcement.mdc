@@ -28,8 +28,8 @@ This project follows a **strict Test-Driven Development workflow**. Tests are th
 - 100% behavioral coverage for the change being made.
 - Strong, specific assertions with explicit expected values.
 - Edge cases, invalid inputs, and adversarial scenarios included.
-- Type-level assertions using `Expect<Equal<A, B>>` where applicable.
-- All tests use `bun:test`. No vitest, no jest.
+- Type-level assertions using Vitest `expectTypeOf` (e.g. `toEqualTypeOf`, `toBeNever`) where applicable.
+- All tests use **Vitest** (`vitest`). Run `bun run test` (see `package.json`).
 
 ### References
 

@@ -47,12 +47,12 @@ Test-Driven Development is **mandatory** for this project. The full pipeline is 
 
 Tests MUST be written **before** implementation. See `TDD.md` for the full mandatory pipeline.
 
-1. Use `bun:test` module (`describe`, `test`, `expect`, `beforeEach`, `afterEach`).
+1. Use **Vitest** (`describe`, `test`, `expect`, `beforeEach`, `afterEach` from `vitest`).
 2. Test files live in `tests/` with `.test.ts` extension.
 3. Import from `../src/index.ts` for public API tests.
 4. Mock `globalThis.fetch` for client tests; restore in `afterEach`.
-5. Type-level tests use `Expect<Equal<A, B>>` compile-time patterns.
-6. Run with `bun test`. No vitest, no jest.
+5. Type-level tests use `expectTypeOf` from Vitest (e.g. `expectTypeOf<A>().toEqualTypeOf<B>()`, `toBeNever()`), validated by `vitest run --typecheck`.
+6. Run with `bun run test` (Vitest + typecheck). Optional: `bun run typecheck` for `tsc --noEmit` alone.
 7. Cover all edge cases, invalid inputs, optional vs required fields, and adversarial scenarios.
 8. Use strong, specific assertions -- exact value matching over loose checks.
 9. Tests MUST be deterministic, self-contained, and implementation-independent.
@@ -71,7 +71,7 @@ When handling both roles in a single session, you MUST clearly declare role tran
 
 - Build: `bun run build` (Vite library mode)
 - Dev: `bun run dev` (Vite watch mode)
-- Test: `bun test`
+- Test: `bun run test` (Vitest; see `vitest.config.ts`)
 - Install: `bun install`
 - Runtime: Bun (not Node.js)
 
@@ -87,7 +87,8 @@ When handling both roles in a single session, you MUST clearly declare role tran
 | `src/client/index.ts`   | `defineClient`, `unwrapOrThrow`, `unwrapOrDefault`, internal HTTP logic |
 | `tests/validate.test.ts`| Schema validation tests                                                 |
 | `tests/client.test.ts`  | Client and defineClient tests                                           |
-| `tests/types.test.ts`   | Compile-time type assertions                                            |
+| `tests/types.test.ts`   | Compile-time type assertions (`expectTypeOf` + `--typecheck`)           |
+| `vitest.config.ts`      | Vitest + `typecheck` (tsc) configuration                                |
 | `agent.md`              | General AI agent guidelines                                             |
 | `claude.md`             | This file -- Claude-specific instructions                               |
 | `TDD.md`                | Mandatory TDD pipeline specification (4 phases)                         |

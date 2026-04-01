@@ -14,6 +14,7 @@ export type {
   HttpMethod,
   RuxError,
   RuxResult,
+  ValidPath,
   // Schema surface
   Schema,
   SchemaToType,

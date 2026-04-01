@@ -20,7 +20,7 @@ The **Test Author Agent** (see `AGENTS.md`) MUST produce a complete test suite b
 
 **Requirements:**
 
-- All tests MUST use `bun:test` (`describe`, `test`, `expect`, `beforeEach`, `afterEach`).
+- All tests MUST use **Vitest** (`import { describe, test, expect, beforeEach, afterEach } from "vitest"`).
 - Test files MUST live in `tests/` with `.test.ts` extension.
 - The suite MUST cover:
   - All client methods and public API surface relevant to the change
@@ -29,7 +29,7 @@ The **Test Author Agent** (see `AGENTS.md`) MUST produce a complete test suite b
   - All invalid inputs (wrong types, missing required fields, malformed data)
   - Optional vs required field behavior
   - All error modes (`result`, `throw`, `default`) where applicable
-  - Type-level assertions using `Expect<Equal<A, B>>` patterns
+  - Type-level assertions using Vitest `expectTypeOf` (e.g. `toEqualTypeOf`, `toBeNever`)
 - Tests MUST be:
   - **Deterministic** -- identical results on every run, no timing or ordering dependencies
   - **Self-contained** -- no shared mutable state between tests; mock setup/teardown in each test or describe block
@@ -85,7 +85,7 @@ Implementation is allowed **ONLY** after the Test Reviewer has explicitly approv
 - The implementation MUST satisfy all existing tests without modification to those tests.
 - If a test reveals a genuine specification error, the test MUST be updated through Phase 2-3 (reviewer approval required) before the implementation changes.
 - Tests MUST NOT be weakened, loosened, or deleted to accommodate implementation.
-- After implementation, run `bun test` -- all tests MUST pass.
+- After implementation, run `bun run test` (Vitest with `--typecheck`) -- all tests and type checks MUST pass.
 - After tests pass, run `bun run build` -- build MUST succeed.
 
 ---
@@ -103,7 +103,7 @@ These standards apply to every test in the repository.
 
 - All assertions MUST be **strong and specific**. Use exact value matching (`toBe`, `toEqual`, `toStrictEqual`) over loose checks (`toBeTruthy`, `toBeDefined`).
 - Error assertions MUST validate the error type discriminant (`network`, `validation`, `http`) and relevant error fields.
-- Type-level assertions MUST use `Expect<Equal<A, B>>` compile-time patterns.
+- Type-level assertions MUST use Vitest `expectTypeOf` (e.g. `expectTypeOf<A>().toEqualTypeOf<B>()`) so failures are reported by `vitest run --typecheck`.
 
 ### Input/Output Definitions
 

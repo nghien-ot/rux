@@ -2,7 +2,7 @@ import { validate, validateResponse } from "../schema/validate.ts";
 import type {
   AuthConfig,
   ClientConfig,
-  EndpointDef,
+  EndpointDefRecordValue,
   ErrorMode,
   QueryParamDef,
   QueryParamsDef,
@@ -145,7 +145,7 @@ function buildUrl(
 
 async function executeRequest<T>(
   baseUrl: string,
-  endpoint: EndpointDef,
+  endpoint: EndpointDefRecordValue,
   clientHeaders: Record<string, string>,
   callOptions?: {
     params?: Record<string, string | number | boolean>;
@@ -285,7 +285,7 @@ async function resolveResult<T>(
 
 export function defineClient<
   M extends ErrorMode = "result",
-  E extends Record<string, EndpointDef> = Record<string, EndpointDef>,
+  E extends Record<string, EndpointDefRecordValue> = Record<string, EndpointDefRecordValue>,
 >(config: ClientConfig<M, E>): RuxClient<M, E> {
   const clientErrorMode: ErrorMode = config.errorMode ?? "result";
   const clientHeaders: Record<string, string> = {

@@ -333,7 +333,9 @@ bun run test       # tests/ + ./.qa/live-api.test.ts (live tests skip unless RUN
 bun run qa:manual  # build + manual QA against `import "@nghien-ot/rux"` (see .qa/test.ts)
 ```
 
-Optional live smoke tests (network): set `RUN_LIVE_API=1` and run `bun test ./.qa/live-api.test.ts` (documented in `MANUAL_QA.md`).
+Compile-time API assertions live in [`tests/types.test.ts`](tests/types.test.ts) using Vitest [`expectTypeOf`](https://vitest.dev/api/expect-typeof) (checked when you pass `--typecheck`, as in `bun run test`). For the mandatory TDD workflow and agent roles, see [`TDD.md`](TDD.md) and [`AGENTS.md`](AGENTS.md).
+
+Optional live smoke tests (network): set `RUN_LIVE_API=1` and run `bun run test` (includes `.qa/live-api.test.ts`; live cases skip unless the env var is set). See `MANUAL_QA.md`.
 
 ## License
 

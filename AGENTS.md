@@ -15,8 +15,8 @@ For the full TDD pipeline, see `TDD.md`.
 - Write complete test suites that define the expected behavior of new features, bugfixes, or API changes.
 - Cover all public API methods, types, error modes, edge cases, and adversarial inputs.
 - Produce tests that are deterministic, self-contained, and implementation-independent.
-- Use `bun:test` exclusively (`describe`, `test`, `expect`, `beforeEach`, `afterEach`).
-- Use `Expect<Equal<A, B>>` compile-time patterns for type-level assertions.
+- Use **Vitest** exclusively (`describe`, `test`, `expect`, `beforeEach`, `afterEach` from `vitest`).
+- Use Vitest `expectTypeOf` for type-level assertions (e.g. `expectTypeOf<A>().toEqualTypeOf<B>()`, `expectTypeOf<T>().toBeNever()`), with `--typecheck` enabled.
 - Submit the test suite for review by the Test Reviewer Agent before any implementation begins.
 
 ### Hard Constraints

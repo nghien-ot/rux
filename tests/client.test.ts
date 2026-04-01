@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { defineClient, unwrapOrThrow, unwrapOrDefault } from "../src/index.ts";
 import type { AuthConfig, RuxResult, RuxError, ValidPath } from "../src/index.ts";
 

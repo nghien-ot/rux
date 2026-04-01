@@ -76,7 +76,17 @@ export type QueryParamsToType<Q extends QueryParamsDef> = Prettify<{
   [K in keyof Q as Q[K] extends { readonly required: true } ? never : K]?: QueryScalar<Q[K]>;
 }>;
 
-type OpenQuery<T> = Prettify<T & Record<string, string>>;
+/** Declared query fields keep their scalar/array types; extra URL keys use the same value shapes as `appendSearchParams`. */
+type OpenQuery<T> = Prettify<
+  T & {
+    [key: string]:
+      | string
+      | number
+      | boolean
+      | ReadonlyArray<string | number | boolean>
+      | undefined;
+  }
+>;
 
 type QueryCallField<Q extends QueryParamsDef | undefined> =
   [Q] extends [QueryParamsDef]
@@ -146,13 +156,28 @@ export type EndpointDef<
   queryParams?: Q;
 } & EndpointBody<M, BS>;
 
+/**
+ * Use for `Record<string, …>` endpoint maps: default `EndpointDef` fixes `Q` to `undefined`,
+ * which forbids `queryParams` on literals. Widening `Q` to `QueryParamsDef | undefined` fixes that.
+ */
+export type EndpointDefRecordValue = EndpointDef<
+  Schema,
+  HttpMethod,
+  ValidPath,
+  Schema | undefined,
+  QueryParamsDef | undefined
+>;
+
 // ---------------------------------------------------------------------------
 // Client configuration
 // ---------------------------------------------------------------------------
 
 export interface ClientConfig<
   M extends ErrorMode = "result",
-  E extends Record<string, EndpointDef> = Record<string, EndpointDef>,
+  E extends Record<string, EndpointDefRecordValue> = Record<
+    string,
+    EndpointDefRecordValue
+  >,
 > {
   baseUrl: string;
   errorMode?: M;
@@ -360,41 +385,49 @@ type InferSliceFromEndpointDef<
   : never;
 
 type InferImplSingle<A, K extends string> =
-  A extends EndpointFn<infer T, infer _CM, infer M, infer P, infer BS, infer Q>
+  A extends EndpointFnNormal<infer T, infer _CM, infer M, infer P, infer BS, infer Q>
     ? InferSliceFromEndpointFn<T, M, P, BS, Q, K>
-    : A extends {
-        method: HttpMethod;
-        path: string;
-        response: Schema;
-      }
-      ? InferSliceFromEndpointDef<A, K>
-      : A extends { readonly response: infer S extends Schema }
-        ? K extends "response"
-          ? SchemaToType<S>
-          : never
-        : never;
+    : A extends EndpointFnClientFallback<infer T, infer M, infer P, infer BS, infer Q>
+      ? InferSliceFromEndpointFn<T, M, P, BS, Q, K>
+      : A extends {
+            method: HttpMethod;
+            path: string;
+            response: Schema;
+          }
+        ? InferSliceFromEndpointDef<A, K>
+        : A extends { readonly response: infer S extends Schema }
+          ? K extends "response"
+            ? SchemaToType<S>
+            : never
+          : never;
 
 type InferDefault<A> =
   A extends Schema
     ? SchemaToType<A>
-    : A extends EndpointFn<infer T, infer _CM, infer _M, infer _P, infer _BS, infer _Q>
+    : A extends EndpointFnNormal<infer T, infer _CM, infer _M, infer _P, infer _BS, infer _Q>
       ? T
-      : A extends { readonly response: Schema }
-        ? SchemaToType<A["response"]>
-        : never;
+      : A extends EndpointFnClientFallback<infer T, infer _M, infer _P, infer _BS, infer _Q>
+        ? T
+        : A extends { readonly response: Schema }
+          ? SchemaToType<A["response"]>
+          : never;
 
 export type InferKeysFor<A> =
-  A extends EndpointFn<infer _T, infer _CM, infer M, infer _P, infer _BS, infer _Q>
+  A extends EndpointFnNormal<infer _T, infer _CM, infer M, infer _P, infer _BS, infer _Q>
     ? M extends MethodWithBody
       ? "response" | "path" | "params" | "body" | "query"
       : "response" | "path" | "params" | "query"
-    : A extends { method: infer M extends HttpMethod; path: string; response: Schema }
+    : A extends EndpointFnClientFallback<infer _T, infer M, infer _P, infer _BS, infer _Q>
       ? M extends MethodWithBody
         ? "response" | "path" | "params" | "body" | "query"
         : "response" | "path" | "params" | "query"
-      : A extends { readonly response: Schema }
-        ? "response"
-        : never;
+      : A extends { method: infer M extends HttpMethod; path: string; response: Schema }
+        ? M extends MethodWithBody
+          ? "response" | "path" | "params" | "body" | "query"
+          : "response" | "path" | "params" | "query"
+        : A extends { readonly response: Schema }
+          ? "response"
+          : never;
 
 export type Infer<
   A,
@@ -414,7 +447,7 @@ export type InferEndpointResponse<
 
 export type RuxClient<
   CM extends ErrorMode,
-  E extends Record<string, EndpointDef>,
+  E extends Record<string, EndpointDefRecordValue>,
 > = {
   [K in keyof E]: E[K] extends {
     response: infer S extends Schema;

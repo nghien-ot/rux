@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect } from "vitest";
 import { validate, validateResponse, handleValidation } from "../src/index.ts";
 import type { Schema, RuxResult } from "../src/index.ts";
 
