@@ -20,10 +20,10 @@ jobs:
       package_version: ${{ steps.version_check.outputs.package_version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6.3.0
 
       - name: Check npm for existing version
         id: version_check
@@ -52,7 +52,7 @@ jobs:
     if: needs.precheck.outputs.changed == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -73,10 +73,10 @@ jobs:
     environment: deploy
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6.3.0
         with:
           registry-url: https://registry.npmjs.org
 
