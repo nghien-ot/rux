@@ -96,7 +96,7 @@ test("endpoint invocation types path params and typed query fields", () => {
   expectTypeOf<"params" extends keyof Options ? true : false>().toEqualTypeOf<true>();
   expectTypeOf<"query" extends keyof Options ? true : false>().toEqualTypeOf<true>();
   expectTypeOf<Options["params"]>().toEqualTypeOf<{ id: string }>();
-  expectTypeOf<Options["query"]>().toMatchTypeOf<{ page: string }>();
+  expectTypeOf<Options["query"]>().toEqualTypeOf<{ page: string }>();
   expectTypeOf<Options["query"]>().toMatchTypeOf<Record<string, string | number | boolean | readonly (string | number | boolean)[] | undefined>>();
 });
 

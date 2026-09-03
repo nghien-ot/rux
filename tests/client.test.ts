@@ -11,6 +11,24 @@ function schema<Output>(validateValue: (value: unknown) => SchemaResult<Output>)
   };
 }
 
+const boundaryInputs: readonly [string, unknown][] = [
+  ["null", null],
+  ["empty object", {}],
+  ["empty array", []],
+  ["empty string", ""],
+  ["unexpected fields", { value: "ok", extra: true }],
+];
+
+function boundarySchema(scope: "body" | "query") {
+  return schema<unknown>((value) => {
+    const isExpectedObject = typeof value === "object" && value !== null && !Array.isArray(value)
+      && Object.keys(value).length === 1 && "value" in value;
+    return isExpectedObject
+      ? { value }
+      : { issues: [{ message: `${scope} boundary invalid`, path: [] }] };
+  });
+}
+
 function jsonResponse(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), {
     status,
@@ -144,6 +162,26 @@ describe("createClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
+  test.each(boundaryInputs)("rejects %s body input through the required body schema", async (_label, input) => {
+    const body = boundarySchema("body");
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { create: { method: "POST", path: "/users", body } } });
+    await expect(client.create({ body: input })).resolves.toEqual({
+      ok: false,
+      error: { type: "validation", message: "body boundary invalid", issues: [{ message: "body boundary invalid", path: [] }] },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  test.each(boundaryInputs)("rejects %s query input through the required query schema", async (_label, input) => {
+    const query = boundarySchema("query");
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { search: { method: "GET", path: "/search", query } } });
+    await expect(client.search({ query: input })).resolves.toEqual({
+      ok: false,
+      error: { type: "validation", message: "query boundary invalid", issues: [{ message: "query boundary invalid", path: [] }] },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
   test("parses a typed HTTP error body through the endpoint error schema", async () => {
     const error = schema<{ code: string }>((value) => ({ value: { code: String((value as { code: string }).code).toUpperCase() } }));
     const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users/1", error } } });
@@ -165,6 +203,24 @@ describe("createClient", () => {
     const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users/1" } } });
     fetchMock.mockResolvedValueOnce(new Response("gone", { status: 410, statusText: "Gone" }));
     await expect(client.get()).resolves.toEqual({ ok: false, error: { type: "http", status: 410, message: "Gone" } });
+  });
+
+  test.each([
+    [500, "Internal Server Error"],
+    [503, "Service Unavailable"],
+  ])("returns %s 5xx response as an HTTP failure", async (status, statusText) => {
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users/1" } } });
+    fetchMock.mockResolvedValueOnce(new Response("server failure", { status, statusText }));
+    await expect(client.get()).resolves.toEqual({ ok: false, error: { type: "http", status, message: statusText } });
+  });
+
+  test("returns an invalid runtime HTTP method as a request error without calling fetch", async () => {
+    const client = createClient({
+      baseUrl: "https://api.test",
+      endpoints: { invalid: { method: "INVALID" as never, path: "/users" } },
+    });
+    await expect(client.invalid()).resolves.toEqual({ ok: false, error: { type: "request", message: "Invalid HTTP method: INVALID" } });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
   test("accepts an empty successful response as undefined when no response schema exists", async () => {

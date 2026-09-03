@@ -70,6 +70,19 @@ describe("Standard Schema v1 validation", () => {
     });
   });
 
+  test("normalizes actual Zod invalid input into a validation error with issues", async () => {
+    const { z } = await import("zod");
+    const schema = z.object({ input: z.string() });
+    await expect(validate(schema, { input: 1 })).resolves.toEqual({
+      ok: false,
+      error: {
+        type: "validation",
+        message: "Invalid input: expected string, received number",
+        issues: [{ message: "Invalid input: expected string, received number", path: ["input"] }],
+      },
+    });
+  });
+
   test("preserves issue paths using Standard Schema path objects", async () => {
     const schema = syncSchema(() => ({ issues: [{ message: "invalid", path: [{ key: "value" }] }] }));
     const result = await validate(schema, 1);
