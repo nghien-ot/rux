@@ -1,945 +1,265 @@
-import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { defineClient, unwrapOrThrow, unwrapOrDefault } from "../src/index.ts";
-import type { AuthConfig, RuxResult, RuxError, ValidPath } from "../src/index.ts";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { createClient } from "../src/index.ts";
 
-// ---------------------------------------------------------------------------
-// Fetch mock helpers
-// ---------------------------------------------------------------------------
+type Issue = { readonly message: string; readonly path?: readonly PropertyKey[] };
+type SchemaResult<Output> = { readonly value: Output } | { readonly issues: readonly Issue[] };
+type FetchInput = string | URL | Request;
+
+function schema<Output>(validateValue: (value: unknown) => SchemaResult<Output>) {
+  return {
+    "~standard": { version: 1 as const, vendor: "client-test", validate: validateValue },
+  };
+}
+
+function jsonResponse(value: unknown, status = 200) {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
 
 const originalFetch = globalThis.fetch;
-let fetchMock: ReturnType<typeof createFetchMock>;
-
-function createFetchMock() {
-  const calls: { url: string; init: RequestInit }[] = [];
-  let handler: (url: string, init: RequestInit) => Response | Promise<Response> = () =>
-    new Response("null", { status: 200 });
-
-  const mock = async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-    const resolved = init ?? {};
-    calls.push({ url, init: resolved });
-    return handler(url, resolved);
-  };
-
-  return {
-    calls,
-    mock: mock as typeof fetch,
-    lastCall() {
-      const c = calls[calls.length - 1];
-      if (!c) throw new Error("No fetch calls recorded");
-      return c;
-    },
-    firstCall() {
-      const c = calls[0];
-      if (!c) throw new Error("No fetch calls recorded");
-      return c;
-    },
-    respondWith(h: (url: string, init: RequestInit) => Response | Promise<Response>) {
-      handler = h;
-    },
-    respondJson(data: unknown, status = 200) {
-      handler = () => new Response(JSON.stringify(data), {
-        status,
-        headers: { "content-type": "application/json" },
-      });
-    },
-    respondError(status: number, body: string) {
-      handler = () => new Response(body, { status, statusText: body });
-    },
-    respondNetworkError(error: unknown) {
-      handler = () => { throw error; };
-    },
-  };
-}
-
-function headersOf(call: { init: RequestInit }): Record<string, string> {
-  return call.init.headers as Record<string, string>;
-}
+let fetchMock: ReturnType<typeof vi.fn>;
+let calls: Array<{ input: FetchInput; init: RequestInit | undefined }>;
 
 beforeEach(() => {
-  fetchMock = createFetchMock();
-  globalThis.fetch = fetchMock.mock;
+  calls = [];
+  fetchMock = vi.fn(async (input: FetchInput, init?: RequestInit) => {
+    calls.push({ input, init });
+    return jsonResponse({ id: 1 });
+  });
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
 });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  vi.useRealTimers();
 });
 
-// ---------------------------------------------------------------------------
-// 4. unwrapOrThrow
-// ---------------------------------------------------------------------------
+function lastInit(): RequestInit {
+  const init = calls.at(-1)?.init;
+  if (!init) throw new Error("fetch was not called with RequestInit");
+  return init;
+}
 
-describe("unwrapOrThrow", () => {
-  test("UOT-01: ok result returns value", () => {
-    const result: RuxResult<number> = { ok: true, value: 42 };
-    expect(unwrapOrThrow(result)).toBe(42);
+function lastUrl(): string {
+  const input = calls.at(-1)?.input;
+  if (input instanceof URL) return input.toString();
+  if (typeof input === "string") return input;
+  return input?.url ?? "";
+}
+
+describe("createClient", () => {
+  test("returns a result with parsed response output", async () => {
+    const response = schema<{ id: number }>((value) => ({ value: { id: Number((value as { id: string }).id) } }));
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users", response } } });
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: "7" }));
+    await expect(client.get()).resolves.toEqual({ ok: true, value: { id: 7 } });
   });
 
-  test("UOT-02: error result throws the error object", () => {
-    const error: RuxError = { type: "http", message: "Not Found", status: 404 };
-    const result: RuxResult<number> = { ok: false, error };
-    try {
-      unwrapOrThrow(result);
-      expect(true).toBe(false);
-    } catch (e) {
-      expect(e).toBe(error);
+  test("applies invocation, endpoint, then client scalar request precedence", async () => {
+    const client = createClient({
+      baseUrl: "https://api.test/v1",
+      request: { credentials: "include", cache: "default", headers: { "x-level": "client", "x-client": "yes" } },
+      endpoints: {
+        get: {
+          method: "GET",
+          path: "/users",
+          request: { credentials: "omit", cache: "no-store", headers: { "x-level": "endpoint", "x-endpoint": "yes" } },
+        },
+      },
+    });
+    await client.get({ request: { credentials: "same-origin", redirect: "error", headers: { "x-level": "invocation", "x-invocation": "yes" } } });
+    const init = lastInit();
+    expect(init.credentials).toBe("same-origin");
+    expect(init.cache).toBe("no-store");
+    expect(init.redirect).toBe("error");
+    expect(new Headers(init.headers).get("x-level")).toBe("invocation");
+    expect(new Headers(init.headers).get("x-client")).toBe("yes");
+    expect(new Headers(init.headers).get("x-endpoint")).toBe("yes");
+    expect(new Headers(init.headers).get("x-invocation")).toBe("yes");
+  });
+
+  test("merges headers case-insensitively across all request layers", async () => {
+    const client = createClient({
+      baseUrl: "https://api.test",
+      request: { headers: { Authorization: "client", "X-Trace": "client" } },
+      endpoints: { get: { method: "GET", path: "/users", request: { headers: { authorization: "endpoint", "x-extra": "endpoint" } } } },
+    });
+    await client.get({ request: { headers: { AUTHORIZATION: "invocation", "x-trace": "invocation" } } });
+    const headers = new Headers(lastInit().headers);
+    expect(headers.get("authorization")).toBe("invocation");
+    expect(headers.get("x-trace")).toBe("invocation");
+    expect(headers.get("x-extra")).toBe("endpoint");
+    expect([...headers.keys()].filter((key) => key === "authorization")).toEqual(["authorization"]);
+  });
+
+  test("uses endpoint method regardless of request option fields", async () => {
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { remove: { method: "DELETE", path: "/users/1" } } });
+    await client.remove();
+    expect(lastInit().method).toBe("DELETE");
+  });
+
+  test("substitutes and URL-encodes typed bracket params", async () => {
+    const client = createClient({
+      baseUrl: "https://api.test",
+      endpoints: { route: { method: "GET", path: "/users/:id[string]/posts/:postId[number]/enabled/:enabled[boolean]" } },
+    });
+    await client.route({ params: { id: "a/b", postId: 42, enabled: false } });
+    expect(lastUrl()).toBe("https://api.test/users/a%2Fb/posts/42/enabled/false");
+  });
+
+  test("serializes query scalars, repeated arrays, null, and skips undefined", async () => {
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { search: { method: "GET", path: "/search" } } });
+    await client.search({ query: { q: "rux", page: 2, active: false, tag: ["one", "two"], empty: null, omitted: undefined } });
+    expect(new URL(lastUrl()).search).toBe("?q=rux&page=2&active=false&tag=one&tag=two&empty=");
+  });
+
+  test("validates body and sends parsed body output before fetch", async () => {
+    const body = schema<{ name: string }>((value) => ({ value: { name: (value as { name: string }).name.trim() } }));
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { create: { method: "POST", path: "/users", body } } });
+    await client.create({ body: { name: " Ada " } });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(lastInit().body).toBe(JSON.stringify({ name: "Ada" }));
+  });
+
+  test("validates query and sends parsed query output before fetch", async () => {
+    const query = schema<{ page: number }>((value) => ({ value: { page: Number((value as { page: string }).page) } }));
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { search: { method: "GET", path: "/search", query } } });
+    await client.search({ query: { page: "3" } });
+    expect(lastUrl()).toBe("https://api.test/search?page=3");
+  });
+
+  test("returns body validation failure without calling fetch", async () => {
+    const body = schema(() => ({ issues: [{ message: "body invalid", path: ["name"] }] }));
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { create: { method: "POST", path: "/users", body } } });
+    await expect(client.create({ body: { name: 1 } })).resolves.toEqual({ ok: false, error: { type: "validation", message: "body invalid", issues: [{ message: "body invalid", path: ["name"] }] } });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  test("returns query validation failure without calling fetch", async () => {
+    const query = schema(() => ({ issues: [{ message: "query invalid", path: ["page"] }] }));
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { search: { method: "GET", path: "/search", query } } });
+    await expect(client.search({ query: { page: "not-a-number" } })).resolves.toEqual({ ok: false, error: { type: "validation", message: "query invalid", issues: [{ message: "query invalid", path: ["page"] }] } });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  test("parses a typed HTTP error body through the endpoint error schema", async () => {
+    const error = schema<{ code: string }>((value) => ({ value: { code: String((value as { code: string }).code).toUpperCase() } }));
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users/1", error } } });
+    fetchMock.mockResolvedValueOnce(jsonResponse({ code: "not_found" }, 404));
+    await expect(client.get()).resolves.toEqual({ ok: false, error: { type: "http", status: 404, message: "HTTP 404", data: { code: "NOT_FOUND" } } });
+  });
+
+  test("returns typed HTTP error-body validation failure when error schema rejects", async () => {
+    const error = schema(() => ({ issues: [{ message: "error body invalid", path: ["code"] }] }));
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users/1", error } } });
+    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 42 }, 422));
+    await expect(client.get()).resolves.toEqual({
+      ok: false,
+      error: { type: "validation", message: "error body invalid", issues: [{ message: "error body invalid", path: ["code"] }] },
+    });
+  });
+
+  test("returns HTTP failure with status and text when no error schema exists", async () => {
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users/1" } } });
+    fetchMock.mockResolvedValueOnce(new Response("gone", { status: 410, statusText: "Gone" }));
+    await expect(client.get()).resolves.toEqual({ ok: false, error: { type: "http", status: 410, message: "Gone" } });
+  });
+
+  test("accepts an empty successful response as undefined when no response schema exists", async () => {
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { ping: { method: "POST", path: "/ping" } } });
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    await expect(client.ping()).resolves.toEqual({ ok: true, value: undefined });
+  });
+
+  test("accepts an empty successful response as undefined with an optional response schema", async () => {
+    const response = schema<{ id: number }>(() => ({ value: { id: 1 } }));
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { ping: { method: "GET", path: "/ping", response } } });
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    await expect(client.ping()).resolves.toEqual({ ok: true, value: undefined });
+  });
+
+  test("accepts a 204 response as undefined", async () => {
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { remove: { method: "DELETE", path: "/users/1" } } });
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    await expect(client.remove()).resolves.toEqual({ ok: true, value: undefined });
+  });
+
+  test("returns response JSON parse failures as validation errors", async () => {
+    const response = schema(() => ({ value: "unused" }));
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users", response } } });
+    fetchMock.mockResolvedValueOnce(new Response("not-json", { status: 200 }));
+    const result = await client.get();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.type).toBe("validation");
+      expect(result.error.message).toBe("Response body is not valid JSON");
     }
   });
-});
 
-// ---------------------------------------------------------------------------
-// 5. unwrapOrDefault
-// ---------------------------------------------------------------------------
-
-describe("unwrapOrDefault", () => {
-  test("UOD-01: ok result returns value, ignores fallback", () => {
-    const result: RuxResult<string> = { ok: true, value: "real" };
-    expect(unwrapOrDefault(result, "default")).toBe("real");
+  test("returns response schema failures as validation errors", async () => {
+    const response = schema(() => ({ issues: [{ message: "response invalid", path: ["id"] }] }));
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users", response } } });
+    await expect(client.get()).resolves.toEqual({ ok: false, error: { type: "validation", message: "response invalid", issues: [{ message: "response invalid", path: ["id"] }] } });
   });
 
-  test("UOD-02: error result returns fallback", () => {
-    const result: RuxResult<string> = {
-      ok: false,
-      error: { type: "network", message: "offline" },
-    };
-    expect(unwrapOrDefault(result, "default")).toBe("default");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 6. defineClient
-// ---------------------------------------------------------------------------
-
-describe("defineClient", () => {
-  // -----------------------------------------------------------------------
-  // 6.1 Client initialization
-  // -----------------------------------------------------------------------
-
-  describe("initialization", () => {
-    test("DC-INIT-01: minimal config creates client with endpoint keys", () => {
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          getUser: { method: "GET", path: "/user", response: "string" },
-        },
-      });
-      expect(typeof client.getUser).toBe("function");
-    });
-
-    test("DC-INIT-02: default errorMode is 'result'", async () => {
-      fetchMock.respondJson("hello");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          getUser: { method: "GET", path: "/user", response: "string" },
-        },
-      });
-      const result = await client.getUser();
-      expect(result).toEqual({ ok: true, value: "hello" });
-    });
-
-    test("DC-INIT-03: errorMode 'throw' returns unwrapped value on success", async () => {
-      fetchMock.respondJson("hello");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        errorMode: "throw",
-        endpoints: {
-          getUser: { method: "GET", path: "/user", response: "string" },
-        },
-      });
-      const value = await client.getUser();
-      expect(value).toBe("hello");
-    });
-
-    test("DC-INIT-04: errorMode 'fallback' requires per-call defaultValue on error", async () => {
-      fetchMock.respondError(500, "Server Error");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        errorMode: "fallback",
-        endpoints: {
-          getUser: { method: "GET", path: "/user", response: "string" },
-        },
-      });
-      const value = await client.getUser({ defaultValue: "fallback-result" });
-      expect(value).toBe("fallback-result");
-    });
+  test("returns invalid URL as a request error without calling fetch", async () => {
+    const client = createClient({ baseUrl: "not a URL", endpoints: { get: { method: "GET", path: "/users" } } });
+    await expect(client.get()).resolves.toEqual({ ok: false, error: { type: "request", message: "Invalid URL" } });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
-  // -----------------------------------------------------------------------
-  // 6.2 Auth header resolution
-  // -----------------------------------------------------------------------
-
-  describe("auth headers", () => {
-    const makeClient = (auth: AuthConfig) =>
-      defineClient({
-        baseUrl: "https://api.test",
-        auth,
-        endpoints: {
-          ping: { method: "GET", path: "/ping", response: "string" },
-        },
-      });
-
-    test("DC-AUTH-01: bearer auth with token", async () => {
-      fetchMock.respondJson("ok");
-      const client = makeClient({ type: "bearer", token: "tok123" });
-      await client.ping();
-      expect(headersOf(fetchMock.firstCall())["authorization"]).toBe("Bearer tok123");
-    });
-
-    test("DC-AUTH-02: bearer auth without token -> no authorization header", async () => {
-      fetchMock.respondJson("ok");
-      const client = makeClient({ type: "bearer" });
-      await client.ping();
-      expect(headersOf(fetchMock.firstCall())["authorization"]).toBeUndefined();
-    });
-
-    test("DC-AUTH-03: basic auth with credentials", async () => {
-      fetchMock.respondJson("ok");
-      const client = makeClient({
-        type: "basic",
-        credentials: { username: "u", password: "p" },
-      });
-      await client.ping();
-      expect(headersOf(fetchMock.firstCall())["authorization"]).toBe(`Basic ${btoa("u:p")}`);
-    });
-
-    test("DC-AUTH-04: basic auth without credentials -> no header", async () => {
-      fetchMock.respondJson("ok");
-      const client = makeClient({ type: "basic" });
-      await client.ping();
-      expect(headersOf(fetchMock.firstCall())["authorization"]).toBeUndefined();
-    });
-
-    test("DC-AUTH-05: custom auth with header", async () => {
-      fetchMock.respondJson("ok");
-      const client = makeClient({
-        type: "custom",
-        header: { name: "x-api-key", value: "secret" },
-      });
-      await client.ping();
-      expect(headersOf(fetchMock.firstCall())["x-api-key"]).toBe("secret");
-    });
-
-    test("DC-AUTH-06: custom auth without header -> no extra header", async () => {
-      fetchMock.respondJson("ok");
-      const client = makeClient({ type: "custom" });
-      await client.ping();
-      expect(Object.keys(headersOf(fetchMock.firstCall()))).not.toContain("x-api-key");
-    });
-
-    test("DC-AUTH-07: no auth config -> only default headers", async () => {
-      fetchMock.respondJson("ok");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          ping: { method: "GET", path: "/ping", response: "string" },
-        },
-      });
-      await client.ping();
-      const h = headersOf(fetchMock.firstCall());
-      expect(h["content-type"]).toBe("application/json");
-      expect(h["authorization"]).toBeUndefined();
-    });
+  test("returns body serialization failures as request errors", async () => {
+    const body = schema(() => ({ value: undefined }));
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { create: { method: "POST", path: "/users", body } } });
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const result = await client.create({ body: circular });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.type).toBe("request");
+      expect(result.error.message).toBe("Failed to serialize request body");
+      expect(result.error.cause).toBeInstanceOf(Error);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
-  // -----------------------------------------------------------------------
-  // 6.3 Header merging order
-  // -----------------------------------------------------------------------
-
-  describe("header merging", () => {
-    test("DC-HDR-01: endpoint headers override client headers", async () => {
-      fetchMock.respondJson("ok");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        headers: { "x-custom": "client" },
-        endpoints: {
-          ping: {
-            method: "GET",
-            path: "/ping",
-            response: "string",
-            headers: { "x-custom": "endpoint" },
-          },
-        },
-      });
-      await client.ping();
-      expect(headersOf(fetchMock.firstCall())["x-custom"]).toBe("endpoint");
-    });
-
-    test("DC-HDR-02: call-level headers override both", async () => {
-      fetchMock.respondJson("ok");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        headers: { "x-custom": "client" },
-        endpoints: {
-          ping: {
-            method: "GET",
-            path: "/ping",
-            response: "string",
-            headers: { "x-custom": "endpoint" },
-          },
-        },
-      });
-      await client.ping({ headers: { "x-custom": "call" } });
-      expect(headersOf(fetchMock.firstCall())["x-custom"]).toBe("call");
-    });
-
-    test("DC-HDR-03: content-type defaults to application/json", async () => {
-      fetchMock.respondJson("ok");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          ping: { method: "GET", path: "/ping", response: "string" },
-        },
-      });
-      await client.ping();
-      expect(headersOf(fetchMock.firstCall())["content-type"]).toBe("application/json");
-    });
-
-    test("DC-HDR-04: client headers override auth headers", async () => {
-      fetchMock.respondJson("ok");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        auth: { type: "bearer", token: "t" },
-        headers: { authorization: "override" },
-        endpoints: {
-          ping: { method: "GET", path: "/ping", response: "string" },
-        },
-      });
-      await client.ping();
-      expect(headersOf(fetchMock.firstCall())["authorization"]).toBe("override");
-    });
+  test("returns fetch rejection as a network error with its cause", async () => {
+    const networkFailure = new Error("offline");
+    fetchMock.mockRejectedValueOnce(networkFailure);
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users" } } });
+    await expect(client.get()).resolves.toEqual({ ok: false, error: { type: "network", message: "offline", cause: networkFailure } });
   });
 
-  // -----------------------------------------------------------------------
-  // 6.4 URL building
-  // -----------------------------------------------------------------------
-
-  describe("URL building", () => {
-    const makeClient = <const P extends ValidPath>(path: P) =>
-      defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          ep: { method: "GET", path, response: "string" },
-        },
-      });
-
-    test("DC-URL-01: simple path", async () => {
-      fetchMock.respondJson("ok");
-      await makeClient("/users").ep();
-      expect(fetchMock.firstCall().url).toBe("https://api.test/users");
-    });
-
-    test("DC-URL-02: path params substitution", async () => {
-      fetchMock.respondJson("ok");
-      await makeClient("/users/:id[string]").ep({ params: { id: "42" } });
-      expect(fetchMock.firstCall().url).toBe("https://api.test/users/42");
-    });
-
-    test("DC-URL-03: path params are URI-encoded", async () => {
-      fetchMock.respondJson("ok");
-      await makeClient("/users/:id[string]").ep({ params: { id: "hello world" } });
-      expect(fetchMock.firstCall().url).toContain("hello%20world");
-    });
-
-    test("DC-URL-04: query params appended", async () => {
-      fetchMock.respondJson("ok");
-      await makeClient("/users").ep({ query: { page: "1", limit: "10" } });
-      const url = new URL(fetchMock.firstCall().url);
-      expect(url.searchParams.get("page")).toBe("1");
-      expect(url.searchParams.get("limit")).toBe("10");
-    });
-
-    test("DC-URL-05: path params + query combined", async () => {
-      fetchMock.respondJson("ok");
-      await makeClient("/users/:id[string]/posts").ep({
-        params: { id: "5" },
-        query: { sort: "date" },
-      });
-      const url = new URL(fetchMock.firstCall().url);
-      expect(url.pathname).toBe("/users/5/posts");
-      expect(url.searchParams.get("sort")).toBe("date");
-    });
-
-    test("DC-URL-06: multiple path params", async () => {
-      fetchMock.respondJson("ok");
-      await makeClient("/orgs/:orgId[string]/users/:userId[string]").ep({
-        params: { orgId: "abc", userId: "def" },
-      });
-      expect(fetchMock.firstCall().url).toBe("https://api.test/orgs/abc/users/def");
-    });
-
-    test("DC-URL-07: empty path", async () => {
-      fetchMock.respondJson("ok");
-      await makeClient("").ep();
-      expect(fetchMock.firstCall().url).toBe("https://api.test/");
-    });
+  test("returns timeout as a request error and aborts fetch", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementationOnce((_input: FetchInput, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    }));
+    const client = createClient({ baseUrl: "https://api.test", timeoutMs: 50, endpoints: { get: { method: "GET", path: "/slow" } } });
+    const pending = client.get();
+    await vi.advanceTimersByTimeAsync(50);
+    await expect(pending).resolves.toMatchObject({ ok: false, error: { type: "request", message: "Request timed out" } });
   });
 
-  // -----------------------------------------------------------------------
-  // 6.5 Request body handling
-  // -----------------------------------------------------------------------
-
-  describe("request body", () => {
-    test("DC-BODY-01: POST with body is JSON-stringified", async () => {
-      fetchMock.respondJson("ok");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          createUser: {
-            method: "POST",
-            path: "/users",
-            response: "string",
-            body: { type: "object", properties: { name: "string" } },
-          },
-        },
-      });
-      await client.createUser({ body: { name: "Ada" } });
-      expect(fetchMock.firstCall().init.body).toBe('{"name":"Ada"}');
-    });
-
-    test("DC-BODY-02: POST with body failing schema -> validation error, fetch not called", async () => {
-      let fetchCalled = false;
-      fetchMock.respondWith(() => {
-        fetchCalled = true;
-        return new Response('"ok"', { status: 200 });
-      });
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          createUser: {
-            method: "POST",
-            path: "/users",
-            response: "string",
-            body: { type: "object", properties: { name: "string" } },
-          },
-        },
-      });
-      const result = await client.createUser({
-        body: { name: 123 } as unknown as { name: string },
-      });
-      expect(result).toEqual({
-        ok: false,
-        error: {
-          type: "validation",
-          message: "Request body failed schema validation",
-        },
-      });
-      expect(fetchCalled).toBe(false);
-    });
-
-    test("DC-BODY-03: POST without body schema sends body as-is", async () => {
-      fetchMock.respondJson("ok");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          createUser: {
-            method: "POST",
-            path: "/users",
-            response: "string",
-          },
-        },
-      });
-      await client.createUser({ body: { any: "thing" } });
-      expect(fetchMock.firstCall().init.body).toBe('{"any":"thing"}');
-    });
-
-    test("DC-BODY-05: body undefined with body schema defined skips validation", async () => {
-      fetchMock.respondJson("ok");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          createUser: {
-            method: "POST",
-            path: "/users",
-            response: "string",
-            body: { type: "object", properties: { name: "string" } },
-          },
-        },
-      });
-      const result = await client.createUser({});
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.value).toBe("ok");
-      }
-    });
+  test("returns caller abort as a request error and preserves abort cause", async () => {
+    const controller = new AbortController();
+    const abortReason = new Error("cancelled by caller");
+    fetchMock.mockImplementationOnce((_input: FetchInput, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    }));
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/slow" } } });
+    const pending = client.get({ request: { signal: controller.signal } });
+    controller.abort(abortReason);
+    await expect(pending).resolves.toEqual({ ok: false, error: { type: "request", message: "cancelled by caller", cause: abortReason } });
   });
 
-  // -----------------------------------------------------------------------
-  // 6.6 Response handling
-  // -----------------------------------------------------------------------
-
-  describe("response handling", () => {
-    test("DC-RESP-01: 200 with valid JSON matching schema -> ok result", async () => {
-      fetchMock.respondJson({ id: 1 });
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          getItem: {
-            method: "GET",
-            path: "/item",
-            response: { type: "object", properties: { id: "number" } },
-          },
-        },
-      });
-      const result = await client.getItem();
-      expect(result).toEqual({ ok: true, value: { id: 1 } });
-    });
-
-    test("DC-RESP-02: 200 with JSON that fails schema -> validation error", async () => {
-      fetchMock.respondJson({ id: "not-a-number" });
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          getItem: {
-            method: "GET",
-            path: "/item",
-            response: { type: "object", properties: { id: "number" } },
-          },
-        },
-      });
-      const result = await client.getItem();
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.type).toBe("validation");
-      }
-    });
-
-    test("DC-RESP-03: 200 with non-JSON response -> validation error", async () => {
-      fetchMock.respondWith(() => new Response("not json", { status: 200 }));
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          getItem: { method: "GET", path: "/item", response: "string" },
-        },
-      });
-      const result = await client.getItem();
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.type).toBe("validation");
-        expect(result.error.message).toBe("Response body is not valid JSON");
-        expect(result.error.cause instanceof SyntaxError).toBe(true);
-      }
-    });
-
-    test("DC-RESP-04: non-OK status (404) -> http error with body text", async () => {
-      fetchMock.respondError(404, "Not Found");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          getItem: { method: "GET", path: "/item", response: "string" },
-        },
-      });
-      const result = await client.getItem();
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.type).toBe("http");
-        expect(result.error.status).toBe(404);
-        expect(result.error.message).toBe("Not Found");
-      }
-    });
-
-    test("DC-RESP-05: non-OK status where response.text() throws -> uses statusText", async () => {
-      fetchMock.respondWith(() => {
-        const resp = new Response(null, { status: 500, statusText: "Internal Server Error" });
-        Object.defineProperty(resp, "text", {
-          value: () => { throw new Error("text() failed"); },
-        });
-        return resp;
-      });
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          getItem: { method: "GET", path: "/item", response: "string" },
-        },
-      });
-      const result = await client.getItem();
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.type).toBe("http");
-        expect(result.error.status).toBe(500);
-        expect(result.error.message).toBe("Internal Server Error");
-      }
-    });
-
-    test("DC-RESP-06: fetch throws Error -> network error", async () => {
-      fetchMock.respondNetworkError(new Error("DNS fail"));
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          getItem: { method: "GET", path: "/item", response: "string" },
-        },
-      });
-      const result = await client.getItem();
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.type).toBe("network");
-        expect(result.error.message).toBe("DNS fail");
-        expect(result.error.cause).toBeInstanceOf(Error);
-      }
-    });
-
-    test("DC-RESP-07: fetch throws non-Error -> network error with generic message", async () => {
-      fetchMock.respondNetworkError("string error");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          getItem: { method: "GET", path: "/item", response: "string" },
-        },
-      });
-      const result = await client.getItem();
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.type).toBe("network");
-        expect(result.error.message).toBe("Network error");
-        expect(result.error.cause).toBe("string error");
-      }
-    });
-  });
-
-  // -----------------------------------------------------------------------
-  // 6.7 Error mode resolution (per-call override)
-  // -----------------------------------------------------------------------
-
-  describe("error mode resolution", () => {
-    const makeResultClient = () =>
-      defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          ping: { method: "GET", path: "/ping", response: "string" },
-        },
-      });
-
-    const makeThrowClient = () =>
-      defineClient({
-        baseUrl: "https://api.test",
-        errorMode: "throw",
-        endpoints: {
-          ping: { method: "GET", path: "/ping", response: "string" },
-        },
-      });
-
-    test("DC-MODE-01: client 'result', no override -> returns RuxResult", async () => {
-      fetchMock.respondJson("pong");
-      const result = await makeResultClient().ping();
-      expect(result).toEqual({ ok: true, value: "pong" });
-    });
-
-    test("DC-MODE-02: client 'result', per-call 'throw' -> returns value on success", async () => {
-      fetchMock.respondJson("pong");
-      const value = await makeResultClient().ping({ errorMode: "throw" });
-      expect(value).toBe("pong");
-    });
-
-    test("DC-MODE-02b: client 'result', per-call 'throw' -> throws on error", async () => {
-      fetchMock.respondError(500, "fail");
-      try {
-        await makeResultClient().ping({ errorMode: "throw" });
-        expect(true).toBe(false);
-      } catch (e: any) {
-        expect(e.type).toBe("http");
-      }
-    });
-
-    test("DC-MODE-03: client 'result', per-call 'fallback' -> returns default on error", async () => {
-      fetchMock.respondError(500, "fail");
-      const value = await makeResultClient().ping({
-        errorMode: "fallback",
-        defaultValue: "safe",
-      });
-      expect(value).toBe("safe");
-    });
-
-    test("DC-MODE-04: client 'throw', per-call 'result' -> returns RuxResult", async () => {
-      fetchMock.respondJson("pong");
-      const result = await makeThrowClient().ping({ errorMode: "result" });
-      expect(result).toEqual({ ok: true, value: "pong" });
-    });
-
-    test("DC-MODE-05: client 'throw', no override -> throws on error", async () => {
-      fetchMock.respondError(500, "fail");
-      try {
-        await makeThrowClient().ping();
-        expect(true).toBe(false);
-      } catch (e: any) {
-        expect(e.type).toBe("http");
-      }
-    });
-
-    test("DC-MODE-06: client 'fallback', per-call defaultValue -> returns default on error", async () => {
-      fetchMock.respondError(500, "fail");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        errorMode: "fallback",
-        endpoints: {
-          ping: { method: "GET", path: "/ping", response: "string" },
-        },
-      });
-      const value = await client.ping({ defaultValue: "safe" });
-      expect(value).toBe("safe");
-    });
-
-    test("DC-MODE-07: client 'fallback' without defaultValue -> rejected promise", async () => {
-      fetchMock.respondJson("pong");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        errorMode: "fallback",
-        endpoints: {
-          ping: { method: "GET", path: "/ping", response: "string" },
-        },
-      });
-      await expect(
-        (client.ping as (opts?: object) => Promise<unknown>)({}),
-      ).rejects.toThrow('defaultValue is required when errorMode is "fallback"');
-    });
-  });
-
-  // -----------------------------------------------------------------------
-  // 6.8 Edge cases
-  // -----------------------------------------------------------------------
-
-  describe("edge cases", () => {
-    test("DC-EDGE-01: multiple endpoints on the same client", () => {
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          getUser: { method: "GET", path: "/user", response: "string" },
-          createUser: { method: "POST", path: "/user", response: "string" },
-          deleteUser: { method: "DELETE", path: "/user/:id[string]", response: "string" },
-        },
-      });
-      expect(typeof client.getUser).toBe("function");
-      expect(typeof client.createUser).toBe("function");
-      expect(typeof client.deleteUser).toBe("function");
-    });
-
-    test("DC-EDGE-02: concurrent calls resolve independently", async () => {
-      let callCount = 0;
-      fetchMock.respondWith(() => {
-        callCount++;
-        return new Response(JSON.stringify(`response-${callCount}`), { status: 200 });
-      });
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          a: { method: "GET", path: "/a", response: "string" },
-          b: { method: "GET", path: "/b", response: "string" },
-        },
-      });
-      const [ra, rb] = await Promise.all([client.a(), client.b()]);
-      expect(ra.ok).toBe(true);
-      expect(rb.ok).toBe(true);
-      expect(fetchMock.calls.length).toBe(2);
-    });
-
-    test("DC-EDGE-03: empty endpoints object -> client has no methods", () => {
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {},
-      });
-      expect(Object.keys(client).length).toBe(0);
-    });
-  });
-
-  // -----------------------------------------------------------------------
-  // 9. Exploratory / Edge Cases (client-related)
-  // -----------------------------------------------------------------------
-
-  describe("exploratory (client)", () => {
-    test("EXP-06: baseUrl with trailing slash vs without", async () => {
-      fetchMock.respondJson("ok");
-      const clientSlash = defineClient({
-        baseUrl: "https://api.test/",
-        endpoints: {
-          ep: { method: "GET", path: "/users", response: "string" },
-        },
-      });
-      await clientSlash.ep();
-      const url1 = fetchMock.firstCall().url;
-
-      fetchMock.calls.length = 0;
-
-      const clientNoSlash = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          ep: { method: "GET", path: "/users", response: "string" },
-        },
-      });
-      await clientNoSlash.ep();
-      const url2 = fetchMock.firstCall().url;
-
-      expect(url1).toBe(url2);
-    });
-
-    test("EXP-07: duplicate path param -> all occurrences replaced", async () => {
-      fetchMock.respondJson("ok");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          ep: {
-            method: "GET",
-            path: "/:id[string]/sub/:id[string]",
-            response: "string",
-          },
-        },
-      });
-      await client.ep({ params: { id: "42" } });
-      const url = fetchMock.firstCall().url;
-      expect(url).toContain("/42/sub/42");
-    });
-
-    test("EXP-07b: triple same path param replaced everywhere", async () => {
-      fetchMock.respondJson("ok");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          ep: {
-            method: "GET",
-            path: "/:id[string]/a/:id[string]/b/:id[string]",
-            response: "string",
-          },
-        },
-      });
-      await client.ep({ params: { id: "7" } });
-      expect(fetchMock.firstCall().url).toBe("https://api.test/7/a/7/b/7");
-    });
-
-    test("EXP-10: unwrapOrThrow throws RuxError directly, not Error instance", () => {
-      const error: RuxError = { type: "http", message: "fail", status: 500 };
-      try {
-        unwrapOrThrow({ ok: false, error });
-        expect(true).toBe(false);
-      } catch (e) {
-        expect(e).not.toBeInstanceOf(Error);
-        expect(e).toBe(error);
-      }
-    });
-
-    test("EXP-11: auth credentials with special characters (colon in password)", async () => {
-      fetchMock.respondJson("ok");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        auth: {
-          type: "basic",
-          credentials: { username: "user", password: "p:a$$w0rd" },
-        },
-        endpoints: {
-          ping: { method: "GET", path: "/ping", response: "string" },
-        },
-      });
-      await client.ping();
-      expect(headersOf(fetchMock.firstCall())["authorization"]).toBe(`Basic ${btoa("user:p:a$$w0rd")}`);
-    });
-
-    test("EXP-12: query param values with special characters", async () => {
-      fetchMock.respondJson("ok");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          ep: { method: "GET", path: "/search", response: "string" },
-        },
-      });
-      await client.ep({ query: { q: "hello world&foo=bar" } });
-      const url = new URL(fetchMock.firstCall().url);
-      expect(url.searchParams.get("q")).toBe("hello world&foo=bar");
-    });
-
-    test("EXP-16: empty string as path param value", async () => {
-      fetchMock.respondJson("ok");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          ep: { method: "GET", path: "/users/:id[string]", response: "string" },
-        },
-      });
-      await client.ep({ params: { id: "" } });
-      expect(fetchMock.firstCall().url).toBe("https://api.test/users/");
-    });
-
-    test("EXP-17: no auth, no headers -> only content-type present", async () => {
-      fetchMock.respondJson("ok");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          ping: { method: "GET", path: "/ping", response: "string" },
-        },
-      });
-      await client.ping();
-      const h = headersOf(fetchMock.firstCall());
-      expect(Object.keys(h)).toEqual(["content-type"]);
-      expect(h["content-type"]).toBe("application/json");
-    });
-
-    test("DC-QP-01: queryParams required + extra keys in URL", async () => {
-      fetchMock.respondJson("ok");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          search: {
-            method: "GET",
-            path: "/search",
-            response: "string",
-            queryParams: {
-              q: { type: "string", required: true },
-              limit: { type: "number", required: false },
-            },
-          },
-        },
-      });
-      await client.search({
-        query: { q: "hi", limit: 3, extra: "x" },
-      });
-      const url = new URL(fetchMock.firstCall().url);
-      expect(url.searchParams.get("q")).toBe("hi");
-      expect(url.searchParams.get("limit")).toBe("3");
-      expect(url.searchParams.get("extra")).toBe("x");
-    });
-
-    test("DC-QP-02: queryParams array uses repeated keys", async () => {
-      fetchMock.respondJson("ok");
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          ep: {
-            method: "GET",
-            path: "/items",
-            response: "string",
-            queryParams: {
-              id: { type: "array", items: "string", required: true },
-            },
-          },
-        },
-      });
-      await client.ep({ query: { id: ["a", "b"] } });
-      const url = new URL(fetchMock.firstCall().url);
-      expect(url.searchParams.getAll("id")).toEqual(["a", "b"]);
-    });
-
-    test("DC-QP-03: invalid query fails validation before fetch", async () => {
-      let fetchCalled = false;
-      fetchMock.respondWith(() => {
-        fetchCalled = true;
-        return new Response('"ok"', { status: 200 });
-      });
-      const client = defineClient({
-        baseUrl: "https://api.test",
-        endpoints: {
-          ep: {
-            method: "GET",
-            path: "/x",
-            response: "string",
-            queryParams: { n: { type: "number", required: true } },
-          },
-        },
-      });
-      const result = await client.ep({ query: { n: "not-a-number" } as unknown as { n: number } });
-      expect(result).toEqual({
-        ok: false,
-        error: {
-          type: "validation",
-          message: "Query parameters failed schema validation",
-        },
-      });
-      expect(fetchCalled).toBe(false);
-    });
+  test("uses configured fetch implementation instead of global fetch", async () => {
+    const configuredFetch = vi.fn(async () => jsonResponse({ configured: true }));
+    const client = createClient({ baseUrl: "https://api.test", fetch: configuredFetch, endpoints: { get: { method: "GET", path: "/users" } } });
+    await client.get();
+    expect(configuredFetch).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 });
