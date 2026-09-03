@@ -1,17 +1,14 @@
-export {
-  defineClient, unwrapOrDefault, unwrapOrThrow
-} from "./client/index.ts";
+export { createClient } from "./client/index.ts";
 
 export { handleValidation, validate, validateResponse } from "./schema/index.ts";
 
 export type {
 
   // Client surface
-  AuthConfig,
   ClientConfig,
-  EndpointDef,
-  ErrorMode,
+  EndpointDefinition,
   HttpMethod,
+  RequestOptions,
   RuxError,
   RuxResult,
   ValidPath,
@@ -19,6 +16,8 @@ export type {
   Schema,
   SchemaToType,
   StandardSchemaV1,
+  StandardSchemaIssue,
+  StandardSchemaResult,
   InferInput,
   InferOutput,
   // Inference (public; access via Infer<> only)

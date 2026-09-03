@@ -1,316 +1,239 @@
-import { validate, validateResponse } from "../schema/validate.ts";
+import { validate } from "../schema/validate.ts";
 import type {
-  AuthConfig,
+  CallOptions,
   ClientConfig,
-  EndpointDefRecordValue,
-  ErrorMode,
-  QueryParamDef,
-  QueryParamsDef,
+  EndpointDefinition,
+  RequestOptions,
   RuxClient,
   RuxError,
   RuxResult,
-  Schema,
 } from "../types/index.ts";
 
-// ---------------------------------------------------------------------------
-// Helpers (exported for ad-hoc use)
-// ---------------------------------------------------------------------------
+const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
+const PATH_PARAM = /:([^/\[\]]+)\[(string|number|boolean)\]/g;
 
-export function unwrapOrThrow<T>(result: RuxResult<T>): T {
-  if (result.ok) return result.value;
-  throw result.error;
+function requestFailure(message: string, cause?: unknown): RuxResult<never> {
+  return { ok: false, error: cause === undefined ? { type: "request", message } : { type: "request", message, cause } };
 }
 
-export function unwrapOrDefault<T>(result: RuxResult<T>, fallback: T): T {
-  if (result.ok) return result.value;
-  return fallback;
+function validationFailure(error: RuxError): RuxResult<never> {
+  return { ok: false, error };
 }
 
-// ---------------------------------------------------------------------------
-// Internal: resolve auth config → header entries
-// ---------------------------------------------------------------------------
+function mergeHeaders(...sources: Array<RequestInit["headers"] | undefined>): Headers {
+  const headers = new Headers();
+  for (const source of sources) {
+    if (!source) continue;
+    new Headers(source).forEach((value, name) => headers.set(name, value));
+  }
+  return headers;
+}
 
-function resolveAuthHeaders(auth?: AuthConfig): Record<string, string> {
-  if (!auth) return {};
+function mergeRequestOptions(...sources: Array<RequestOptions | undefined>): RequestOptions {
+  const merged: RequestOptions = {};
+  for (const source of sources) {
+    if (!source) continue;
+    const { headers: _headers, method: _method, body: _body, ...scalar } = source as RequestInit;
+    Object.assign(merged, scalar);
+  }
+  return merged;
+}
 
-  switch (auth.type) {
-    case "bearer":
-      return auth.token ? { authorization: `Bearer ${auth.token}` } : {};
-    case "basic": {
-      if (!auth.credentials) return {};
-      const encoded = btoa(
-        `${auth.credentials.username}:${auth.credentials.password}`,
-      );
-      return { authorization: `Basic ${encoded}` };
+function resolvePath(path: string, params: unknown): string | RuxResult<never> {
+  const values = params !== null && typeof params === "object" ? params as Record<string, unknown> : {};
+  let missing: string | undefined;
+  let invalid: string | undefined;
+  const result = path.replace(PATH_PARAM, (match, name: string, kind: string) => {
+    const value = values[name];
+    if (value === undefined) {
+      missing ??= name;
+      return match;
     }
-    case "custom":
-      return auth.header ? { [auth.header.name]: auth.header.value } : {};
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Internal: queryParams → object Schema for validate()
-// ---------------------------------------------------------------------------
-
-function queryParamDefToPropertySchema(def: QueryParamDef): Schema {
-  const optional = def.required !== true;
-  const nullable = def.nullable === true;
-  if (def.type === "array") {
-    return {
-      type: "array",
-      items: def.items,
-      ...(nullable ? { nullable: true } : {}),
-      ...(optional ? { optional: true } : {}),
-    };
-  }
-  return {
-    type: def.type,
-    ...(nullable ? { nullable: true } : {}),
-    ...(optional ? { optional: true } : {}),
-  };
-}
-
-function queryParamsToObjectSchema(qp: QueryParamsDef): Schema {
-  const properties: Record<string, Schema> = {};
-  for (const [key, def] of Object.entries(qp)) {
-    properties[key] = queryParamDefToPropertySchema(def);
-  }
-  return { type: "object", properties };
-}
-
-function encodePathParamValue(value: string | number | boolean): string {
-  return encodeURIComponent(String(value));
-}
-
-/** Replace every :name[type] segment for each params key. */
-function applyPathParams(
-  path: string,
-  params?: Record<string, string | number | boolean>,
-): string {
-  let resolved = path;
-  if (params) {
-    for (const [key, value] of Object.entries(params)) {
-      const re = new RegExp(`:${key}\\[[^\\]]+\\]`, "g");
-      resolved = resolved.replace(re, encodePathParamValue(value));
+    const valid = kind === "string"
+      ? typeof value === "string"
+      : kind === "number"
+        ? typeof value === "number" && Number.isFinite(value)
+        : typeof value === "boolean";
+    if (!valid) {
+      invalid ??= name;
+      return match;
     }
-  }
-  return resolved;
+    return encodeURIComponent(String(value));
+  });
+  if (missing) return requestFailure(`Missing path parameter: ${missing}`);
+  if (invalid) return requestFailure(`Invalid path parameter: ${invalid}`);
+  return result;
 }
 
-function appendSearchParams(
-  url: URL,
-  query: Record<string, unknown>,
-): void {
-  for (const [key, v] of Object.entries(query)) {
-    if (v === undefined) continue;
-    if (v === null) {
-      url.searchParams.set(key, "");
-      continue;
-    }
-    if (Array.isArray(v)) {
-      for (const item of v) {
-        url.searchParams.append(key, String(item));
-      }
-    } else if (typeof v === "object") {
-      continue;
-    } else {
-      url.searchParams.set(key, String(v));
-    }
+function appendQuery(url: URL, query: unknown): void {
+  if (query === null || typeof query !== "object" || Array.isArray(query)) return;
+  for (const [key, value] of Object.entries(query as Record<string, unknown>)) {
+    if (value === undefined) continue;
+    if (value === null) url.searchParams.set(key, "");
+    else if (Array.isArray(value)) for (const item of value) url.searchParams.append(key, String(item));
+    else if (typeof value !== "object") url.searchParams.set(key, String(value));
   }
 }
 
-// ---------------------------------------------------------------------------
-// Internal: build full URL with path-param substitution + query
-// ---------------------------------------------------------------------------
-
-function buildUrl(
-  baseUrl: string,
-  path: string,
-  params?: Record<string, string | number | boolean>,
-  query?: Record<string, unknown>,
-): string {
-  const resolvedPath = applyPathParams(path, params);
-  const url = new URL(resolvedPath, baseUrl);
-
-  if (query && Object.keys(query).length > 0) {
-    appendSearchParams(url, query);
-  }
-
-  return url.toString();
+function abortMessage(reason: unknown): string {
+  return reason instanceof Error && reason.message ? reason.message : "Request aborted";
 }
 
-// ---------------------------------------------------------------------------
-// Internal: execute a single request → always returns RuxResult
-// ---------------------------------------------------------------------------
+function attachErrorContext(result: RuxResult<unknown>, status: number): RuxResult<unknown> {
+  if (!result.ok && result.error.type === "validation") {
+    Object.defineProperties(result.error, {
+      status: { value: status, enumerable: false },
+      phase: { value: "error", enumerable: false },
+    });
+  }
+  return result;
+}
 
-async function executeRequest<T>(
-  baseUrl: string,
-  endpoint: EndpointDefRecordValue,
-  clientHeaders: Record<string, string>,
-  callOptions?: {
-    params?: Record<string, string | number | boolean>;
-    query?: Record<string, unknown>;
+async function parseJsonResponse(response: Response): Promise<{ ok: true; value: unknown } | RuxResult<never>> {
+  let text: string;
+  try {
+    text = await response.text();
+  } catch (cause) {
+    return validationFailure({ type: "validation", message: "Response body is not valid JSON", cause });
+  }
+  if (text === "") return { ok: true, value: undefined };
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch (cause) {
+    return validationFailure({ type: "validation", message: "Response body is not valid JSON", cause });
+  }
+}
+
+async function execute<E extends EndpointDefinition>(
+  config: ClientConfig<Record<string, EndpointDefinition>>,
+  endpoint: E,
+  options: CallOptions<E> | undefined,
+): Promise<RuxResult<unknown>> {
+  if (!METHODS.has(endpoint.method)) return requestFailure(`Invalid HTTP method: ${String(endpoint.method)}`);
+
+  const input = options as (CallOptions<E> & {
     body?: unknown;
-    headers?: Record<string, string>;
-  },
-): Promise<RuxResult<T>> {
-  const ep = endpoint as {
-    response: Schema;
-    body?: Schema;
-    queryParams?: QueryParamsDef;
-  };
+    params?: unknown;
+    query?: unknown;
+  }) | undefined;
+  let parsedBody: unknown;
+  if (endpoint.body) {
+    const bodyResult = await validate(endpoint.body, input?.body);
+    if (!bodyResult.ok) return bodyResult;
+    parsedBody = bodyResult.value;
+  }
 
-  if (ep.body && callOptions?.body !== undefined) {
-    if (!validate(ep.body, callOptions.body)) {
-      return {
-        ok: false,
-        error: {
-          type: "validation",
-          message: "Request body failed schema validation",
-        },
-      };
+  let parsedQuery: unknown = input?.query;
+  if (endpoint.query) {
+    const queryResult = await validate(endpoint.query, input?.query);
+    if (!queryResult.ok) return queryResult;
+    parsedQuery = queryResult.value;
+  }
+
+  const resolvedPath = resolvePath(endpoint.path, input?.params);
+  if (typeof resolvedPath !== "string") return resolvedPath;
+
+  let url: URL;
+  try {
+    url = new URL(resolvedPath, config.baseUrl);
+    appendQuery(url, parsedQuery);
+  } catch (cause) {
+    return requestFailure("Invalid URL");
+  }
+
+  let serializedBody: string | undefined;
+  if (endpoint.body) {
+    try {
+      serializedBody = JSON.stringify(parsedBody);
+    } catch (cause) {
+      return requestFailure("Failed to serialize request body", cause);
     }
   }
 
-  if (ep.queryParams) {
-    const q = callOptions?.query ?? {};
-    const schema = queryParamsToObjectSchema(ep.queryParams);
-    if (!validate(schema, q)) {
-      return {
-        ok: false,
-        error: {
-          type: "validation",
-          message: "Query parameters failed schema validation",
-        },
-      };
-    }
+  const request = mergeRequestOptions(config.request, endpoint.request, options?.request);
+  const headers = mergeHeaders(config.request?.headers, endpoint.request?.headers, options?.request?.headers);
+  if (endpoint.body && !headers.has("content-type")) headers.set("content-type", "application/json");
+  const timeoutMs = options?.timeoutMs ?? endpoint.timeoutMs ?? config.timeoutMs;
+  const callerSignal = request.signal;
+  const controller = new AbortController();
+  let timedOut = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const onCallerAbort = () => controller.abort(callerSignal?.reason);
+
+  if (callerSignal?.aborted) onCallerAbort();
+  else callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
+  if (timeoutMs !== undefined) {
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort(new DOMException("Request timed out", "TimeoutError"));
+    }, timeoutMs);
   }
-
-  const url = buildUrl(
-    baseUrl,
-    endpoint.path,
-    callOptions?.params,
-    callOptions?.query,
-  );
-
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-    ...clientHeaders,
-    ...endpoint.headers,
-    ...callOptions?.headers,
-  };
 
   const init: RequestInit = {
-    method: endpoint.method,
+    ...request,
     headers,
+    method: endpoint.method,
+    ...(endpoint.body ? { body: serializedBody } : {}),
+    signal: controller.signal,
   };
-
-  if (callOptions?.body !== undefined) {
-    init.body = JSON.stringify(callOptions.body);
-  }
 
   let response: Response;
   try {
-    response = await fetch(url, init);
+    response = await (config.fetch ?? globalThis.fetch)(url.toString(), init);
   } catch (cause) {
-    return {
-      ok: false,
-      error: {
-        type: "network",
-        message: cause instanceof Error ? cause.message : "Network error",
-        cause,
-      },
-    };
+    if (controller.signal.aborted) {
+      const abortCause = controller.signal.reason;
+      return requestFailure(timedOut ? "Request timed out" : abortMessage(abortCause), abortCause);
+    }
+    return { ok: false, error: { type: "network", message: cause instanceof Error ? cause.message : "Network error", cause } };
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    callerSignal?.removeEventListener("abort", onCallerAbort);
+  }
+
+  if (controller.signal.aborted) {
+    const abortCause = controller.signal.reason;
+    return requestFailure(timedOut ? "Request timed out" : abortMessage(abortCause), abortCause);
   }
 
   if (!response.ok) {
-    let message = response.statusText;
-    try {
-      message = await response.text();
-    } catch {
-      // keep statusText
+    if (!endpoint.error) {
+      return { ok: false, error: { type: "http", status: response.status, message: response.statusText || `HTTP ${response.status}` } };
     }
-    return {
-      ok: false,
-      error: { type: "http", status: response.status, message },
-    };
-  }
-
-  let json: unknown;
-  try {
-    json = await response.json();
-  } catch (cause) {
+    const parsed = await parseJsonResponse(response);
+    if (!parsed.ok) return attachErrorContext(parsed, response.status);
+    const errorResult = await validate(endpoint.error, parsed.value);
+    if (!errorResult.ok) return attachErrorContext(errorResult, response.status);
     return {
       ok: false,
       error: {
-        type: "validation",
-        message: "Response body is not valid JSON",
-        cause,
+        type: "http",
+        status: response.status,
+        message: response.statusText || `HTTP ${response.status}`,
+        data: errorResult.value,
       },
     };
   }
 
-  return validateResponse<T>(ep.response, json);
-}
-
-// ---------------------------------------------------------------------------
-// Resolve error mode and surface result accordingly
-// ---------------------------------------------------------------------------
-
-async function resolveResult<T>(
-  resultPromise: Promise<RuxResult<T>>,
-  mode: ErrorMode,
-  defaultValue?: T,
-): Promise<unknown> {
-  const result = await resultPromise;
-
-  switch (mode) {
-    case "result":
-      return result;
-    case "throw":
-      return unwrapOrThrow(result);
-    case "fallback":
-      if (defaultValue === undefined) {
-        throw new Error(
-          "defaultValue is required when errorMode is \"fallback\"",
-        );
-      }
-      return unwrapOrDefault(result, defaultValue);
+  const parsed = await parseJsonResponse(response);
+  if (!parsed.ok) return parsed;
+  if (parsed.value === undefined) {
+    if (!endpoint.response) return { ok: true, value: undefined };
+    return validationFailure({ type: "validation", message: "Response body is empty" });
   }
+  if (!endpoint.response) {
+    return validationFailure({ type: "validation", message: "Response schema is required for a non-empty body" });
+  }
+  return validate(endpoint.response, parsed.value);
 }
 
-// ---------------------------------------------------------------------------
-// defineClient
-// ---------------------------------------------------------------------------
-
-export function defineClient<
-  M extends ErrorMode = "result",
-  E extends Record<string, EndpointDefRecordValue> = Record<string, EndpointDefRecordValue>,
->(config: ClientConfig<M, E>): RuxClient<M, E> {
-  const clientErrorMode: ErrorMode = config.errorMode ?? "result";
-  const clientHeaders: Record<string, string> = {
-    ...resolveAuthHeaders(config.auth),
-    ...config.headers,
-  };
-
-  const client = {} as Record<string, unknown>;
-
+export function createClient<E extends Record<string, EndpointDefinition>>(
+  config: ClientConfig<E>,
+): RuxClient<E> {
+  const client = {} as RuxClient<E>;
   for (const [name, endpoint] of Object.entries(config.endpoints)) {
-    client[name] = (callOptions?: Record<string, unknown>) => {
-      const mode =
-        (callOptions?.errorMode as ErrorMode | undefined) ?? clientErrorMode;
-      const defaultValue = callOptions?.defaultValue;
-
-      const resultPromise = executeRequest(
-        config.baseUrl,
-        endpoint,
-        clientHeaders,
-        callOptions as Parameters<typeof executeRequest>[3],
-      );
-
-      return resolveResult(resultPromise, mode, defaultValue);
-    };
+    client[name as keyof E] = ((options?: CallOptions<EndpointDefinition>) =>
+      execute(config, endpoint, options)) as RuxClient<E>[keyof E];
   }
-
-  return client as RuxClient<M, E>;
+  return client;
 }
