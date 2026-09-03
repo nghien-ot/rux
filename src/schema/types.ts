@@ -1,68 +1,46 @@
 // ---------------------------------------------------------------------------
-// Schema primitives
+// Standard Schema v1 structural contract
 // ---------------------------------------------------------------------------
 
-export type PrimitiveSchema = "string" | "number" | "boolean" | "unknown";
-
-export interface PrimitiveObjectSchema {
-  readonly type: PrimitiveSchema;
-  readonly optional?: boolean;
-  readonly nullable?: boolean;
+export interface StandardSchemaIssue {
+  readonly message: string;
+  readonly path?: readonly (PropertyKey | { readonly key: PropertyKey })[];
 }
 
-export interface ObjectSchema {
-  readonly type: "object";
-  readonly properties: { readonly [key: string]: Schema };
-  readonly optional?: boolean;
-  readonly nullable?: boolean;
+export type StandardSchemaResult<Output> =
+  | { readonly value: Output }
+  | { readonly issues: readonly StandardSchemaIssue[] };
+
+export interface StandardSchemaTypes<Input, Output> {
+  readonly input: Input;
+  readonly output: Output;
 }
 
-export interface ArraySchema {
-  readonly type: "array";
-  readonly items: Schema;
-  readonly optional?: boolean;
-  readonly nullable?: boolean;
+export interface StandardSchema<Input = unknown, Output = Input> {
+  readonly "~standard": {
+    readonly version: 1;
+    readonly vendor: string;
+    readonly validate: (
+      value: unknown,
+    ) => StandardSchemaResult<Output> | Promise<StandardSchemaResult<Output>>;
+    readonly types?: StandardSchemaTypes<Input, Output> | undefined;
+  };
 }
 
-export type Schema =
-  | PrimitiveSchema
-  | PrimitiveObjectSchema
-  | ObjectSchema
-  | ArraySchema;
+/** Compatibility name used by the Standard Schema specification. */
+export type StandardSchemaV1<Input = unknown, Output = Input> = StandardSchema<Input, Output>;
 
-// ---------------------------------------------------------------------------
-// Compile-time type inference from schemas
-// ---------------------------------------------------------------------------
+export type InferInput<S extends StandardSchema> =
+  S extends StandardSchema<infer Input, unknown> ? Input : never;
 
-type Prettify<T> = { [K in keyof T]: T[K] } & {};
+export type InferOutput<S extends StandardSchema> =
+  S extends StandardSchema<unknown, infer Output> ? Output : never;
 
-type RequiredKeys<P> = {
-  [K in keyof P]: P[K] extends { readonly optional: true } ? never : K;
-}[keyof P];
+export type Schema = StandardSchema;
+export type SchemaToType<S extends Schema> = InferOutput<S>;
 
-type OptionalKeys<P> = {
-  [K in keyof P]: P[K] extends { readonly optional: true } ? K : never;
-}[keyof P];
-
-type WithNullable<S, T> = S extends { readonly nullable: true } ? T | null : T;
-
-type CoreType<S> = S extends "string"
-  ? string
-  : S extends "number"
-    ? number
-    : S extends "boolean"
-      ? boolean
-      : S extends "unknown"
-        ? unknown
-        : S extends { readonly type: "object"; readonly properties: infer P }
-          ? Prettify<
-              { [K in RequiredKeys<P & {}>]: SchemaToType<(P & {})[K]> } &
-              { [K in OptionalKeys<P & {}>]?: SchemaToType<(P & {})[K]> }
-            >
-          : S extends { readonly type: "array"; readonly items: infer I }
-            ? SchemaToType<I>[]
-            : S extends { readonly type: infer T }
-              ? CoreType<T>
-              : never;
-
-export type SchemaToType<S> = WithNullable<S, CoreType<S>>;
+// Legacy names remain type aliases only; they no longer describe a runtime DSL.
+export type PrimitiveSchema = Schema;
+export type PrimitiveObjectSchema = Schema;
+export type ObjectSchema = Schema;
+export type ArraySchema = Schema;

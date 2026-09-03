@@ -4,10 +4,11 @@
 
 export type {
   ArraySchema, ObjectSchema, PrimitiveObjectSchema, PrimitiveSchema, Schema,
-  SchemaToType
+  SchemaToType, StandardSchema, StandardSchemaIssue, StandardSchemaResult,
+  StandardSchemaTypes, StandardSchemaV1, InferInput, InferOutput,
 } from "../schema/types.ts";
 
-import type { Schema, SchemaToType } from "../schema/types.ts";
+import type { InferOutput, Schema, SchemaToType } from "../schema/types.ts";
 
 // ---------------------------------------------------------------------------
 // Path utilities (bracket DSL: /:name[string], /:id[number], /:x[boolean])
@@ -122,6 +123,7 @@ export interface RuxError {
   status?: number;
   message: string;
   cause?: unknown;
+  issues?: readonly import("../schema/types.ts").StandardSchemaIssue[];
 }
 
 // ---------------------------------------------------------------------------
@@ -429,7 +431,7 @@ export type InferKeysFor<A> =
           ? "response"
           : never;
 
-export type Infer<
+type InferEndpoint<
   A,
   K extends InferKeysFor<A> | undefined = undefined,
 > = [K] extends [undefined]
@@ -439,6 +441,14 @@ export type Infer<
       : K extends string
         ? InferImplSingle<A, K>
         : never;
+
+/** Parsed output for a Standard Schema; endpoint inference remains available with a slice key. */
+export type Infer<
+  A,
+  K extends InferKeysFor<A> | undefined = undefined,
+> = A extends Schema
+  ? InferOutput<A>
+  : InferEndpoint<A, K>;
 
 /** Same value as `Infer<E, "response">` for endpoint definitions; implemented without recursion so declaration emit accepts the generic constraint. */
 export type InferEndpointResponse<
