@@ -79,14 +79,36 @@ function abortMessage(reason: unknown): string {
   return reason instanceof Error && reason.message ? reason.message : "Request aborted";
 }
 
-function attachErrorContext(result: RuxResult<unknown>, status: number): RuxResult<unknown> {
+function attachErrorContext(
+  result: RuxResult<unknown>,
+  status: number,
+  phase: "error",
+): RuxResult<unknown> {
   if (!result.ok && result.error.type === "validation") {
     Object.defineProperties(result.error, {
       status: { value: status, enumerable: false },
-      phase: { value: "error", enumerable: false },
+      phase: { value: phase, enumerable: false },
     });
   }
   return result;
+}
+
+async function validateAt(
+  schema: Parameters<typeof validate>[0],
+  value: unknown,
+  status?: number,
+): Promise<RuxResult<unknown>> {
+  try {
+    const result = await validate(schema, value);
+    return status === undefined ? result : attachErrorContext(result, status, "error");
+  } catch (cause) {
+    const result = validationFailure({
+      type: "validation",
+      message: cause instanceof Error && cause.message ? cause.message : "Schema validation failed",
+      cause,
+    });
+    return status === undefined ? result : attachErrorContext(result, status, "error");
+  }
 }
 
 async function parseJsonResponse(response: Response): Promise<{ ok: true; value: unknown } | RuxResult<never>> {
@@ -104,7 +126,7 @@ async function parseJsonResponse(response: Response): Promise<{ ok: true; value:
   }
 }
 
-async function execute<E extends EndpointDefinition>(
+async function executeRequest<E extends EndpointDefinition>(
   config: ClientConfig<Record<string, EndpointDefinition>>,
   endpoint: E,
   options: CallOptions<E> | undefined,
@@ -118,14 +140,14 @@ async function execute<E extends EndpointDefinition>(
   }) | undefined;
   let parsedBody: unknown;
   if (endpoint.body) {
-    const bodyResult = await validate(endpoint.body, input?.body);
+    const bodyResult = await validateAt(endpoint.body, input?.body);
     if (!bodyResult.ok) return bodyResult;
     parsedBody = bodyResult.value;
   }
 
   let parsedQuery: unknown = input?.query;
   if (endpoint.query) {
-    const queryResult = await validate(endpoint.query, input?.query);
+    const queryResult = await validateAt(endpoint.query, input?.query);
     if (!queryResult.ok) return queryResult;
     parsedQuery = queryResult.value;
   }
@@ -201,9 +223,9 @@ async function execute<E extends EndpointDefinition>(
       return { ok: false, error: { type: "http", status: response.status, message: response.statusText || `HTTP ${response.status}` } };
     }
     const parsed = await parseJsonResponse(response);
-    if (!parsed.ok) return attachErrorContext(parsed, response.status);
-    const errorResult = await validate(endpoint.error, parsed.value);
-    if (!errorResult.ok) return attachErrorContext(errorResult, response.status);
+    if (!parsed.ok) return attachErrorContext(parsed, response.status, "error");
+    const errorResult = await validateAt(endpoint.error, parsed.value, response.status);
+    if (!errorResult.ok) return errorResult;
     return {
       ok: false,
       error: {
@@ -224,7 +246,19 @@ async function execute<E extends EndpointDefinition>(
   if (!endpoint.response) {
     return validationFailure({ type: "validation", message: "Response schema is required for a non-empty body" });
   }
-  return validate(endpoint.response, parsed.value);
+  return validateAt(endpoint.response, parsed.value);
+}
+
+async function execute<E extends EndpointDefinition>(
+  config: ClientConfig<Record<string, EndpointDefinition>>,
+  endpoint: E,
+  options: CallOptions<E> | undefined,
+): Promise<RuxResult<unknown>> {
+  try {
+    return await executeRequest(config, endpoint, options);
+  } catch (cause) {
+    return requestFailure("Request failed", cause);
+  }
 }
 
 export function createClient<E extends Record<string, EndpointDefinition>>(

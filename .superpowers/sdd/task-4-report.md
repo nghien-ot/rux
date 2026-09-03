@@ -32,3 +32,22 @@
 ## Concern / blocker
 
 The full suite package-export assertion is unrelated to Task 4 and requires a `package.json` change, which task instructions prohibit. It was left unchanged.
+
+## Review-fix update
+
+- Wrapped every body, query, response, and error Standard Schema validation call so synchronous throws and rejected promises become validation results.
+- Added a final async execution boundary so unexpected client-call failures still resolve as request results rather than rejected promises.
+- Removed duplicate Standard Schema declarations from `src/types/index.ts`; canonical types now re-export from `src/schema/types.ts`, including `StandardSchemaV1` and `StandardSchemaTypes`.
+
+## Review-fix verification
+
+| Command | Result |
+| --- | --- |
+| `bunx vitest run --typecheck tests/client.test.ts` | 67 tests passed; Vitest also typechecked `tests/types.test.ts` and reported its existing `StandardSchemaV1` path-type mismatch as an unhandled type error |
+| `bunx vitest run --typecheck tests/client.test.ts tests/types.test.ts` | 88 tests passed, 1 type test failed: `StandardSchemaV1 exposes version, vendor, and sync/async validation` |
+| `bun run build` | PASS |
+| `git diff --check` | PASS |
+
+## Review-fix concern
+
+The remaining type failure is caused by the approved test expecting `Issue.path` to contain only `PropertyKey`, while canonical Task 3 `StandardSchemaIssue` also permits `{ key: PropertyKey }` path segments. Tests and `src/schema/types.ts` were not modified per instruction.

@@ -1,29 +1,25 @@
-export interface StandardSchemaIssue {
-  readonly message: string;
-  readonly path?: readonly (PropertyKey | { readonly key: PropertyKey })[];
-}
+export type {
+  ArraySchema,
+  InferInput,
+  InferOutput,
+  ObjectSchema,
+  PrimitiveObjectSchema,
+  PrimitiveSchema,
+  Schema,
+  SchemaToType,
+  StandardSchema,
+  StandardSchemaIssue,
+  StandardSchemaResult,
+  StandardSchemaTypes,
+  StandardSchemaV1,
+} from "../schema/types.ts";
 
-export type StandardSchemaResult<Output> =
-  | { value: Output }
-  | { issues: readonly { message: string }[] };
-
-export interface StandardSchemaV1<Input = unknown, Output = Input> {
-  readonly "~standard": {
-    readonly version: 1;
-    readonly vendor: string;
-    readonly validate: (value: unknown) =>
-      | StandardSchemaResult<Output>
-      | Promise<StandardSchemaResult<Output>>;
-    readonly types?: { readonly input: Input; readonly output: Output } | undefined;
-  };
-}
-
-export type InferInput<S extends StandardSchemaV1> =
-  NonNullable<S["~standard"]["types"]>["input"];
-export type InferOutput<S extends StandardSchemaV1> =
-  NonNullable<S["~standard"]["types"]>["output"];
-export type Schema = StandardSchemaV1;
-export type SchemaToType<S extends Schema> = InferOutput<S>;
+import type {
+  InferInput,
+  InferOutput,
+  StandardSchemaIssue,
+  StandardSchemaV1,
+} from "../schema/types.ts";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 export type ValidPath = `/${string}` | "";
