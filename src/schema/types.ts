@@ -30,11 +30,13 @@ export interface StandardSchema<Input = unknown, Output = Input> {
 /** Compatibility name used by the Standard Schema specification. */
 export type StandardSchemaV1<Input = unknown, Output = Input> = StandardSchema<Input, Output>;
 
+/** Accepted input recovered from a schema's structural `~standard.types` marker. */
 export type InferInput<S extends StandardSchema> =
-  S extends StandardSchema<infer Input, unknown> ? Input : never;
+  NonNullable<S["~standard"]["types"]>["input"];
 
+/** Parsed output recovered from a schema's structural `~standard.types` marker. */
 export type InferOutput<S extends StandardSchema> =
-  S extends StandardSchema<unknown, infer Output> ? Output : never;
+  NonNullable<S["~standard"]["types"]>["output"];
 
 export type Schema = StandardSchema;
 export type SchemaToType<S extends Schema> = InferOutput<S>;

@@ -18,6 +18,9 @@ export type {
   // Schema surface
   Schema,
   SchemaToType,
+  StandardSchemaV1,
+  InferInput,
+  InferOutput,
   // Inference (public; access via Infer<> only)
   Infer
 } from "./types/index.ts";
