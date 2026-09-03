@@ -6,6 +6,7 @@ out
 dist
 *.tgz
 .worktrees/
+.superpowers/
 
 # code coverage
 coverage
