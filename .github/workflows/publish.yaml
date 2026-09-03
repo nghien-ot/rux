@@ -65,11 +65,11 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-      - name: Run tests
-        run: bun run test
-
       - name: Build
         run: bun run build
+
+      - name: Run tests
+        run: bun run test
 
       - name: Smoke-test package surface
         run: bun test tests/package.test.ts

@@ -41,3 +41,28 @@ Changed release and public-surface integration only. Did not modify `src/`, clie
 
 - `vite-plugin-dts` reports its bundled TypeScript 5.8.2 is older than the project TypeScript 5.9.3. Build and typecheck pass; warning is pre-existing tooling version drift.
 - `.qa/*` is ignored by repository policy. `MANUAL_QA.md` must be force-added intentionally.
+
+## Critical fix — CI build order
+
+### File
+
+- `.github/workflows/publish.yaml`
+
+### Root cause and fix
+
+The `verify` job ran `bun run test` before `bun run build`. `tests/package.test.ts` imports the package through its `exports` map and therefore reads `dist/`; before the build, that can be stale checkout output rather than the release candidate. Moved the existing build step to immediately after typecheck and before the full test suite. The package-surface smoke test remains after the full suite.
+
+### Verification
+
+| Command | Result |
+| --- | --- |
+| `bun run build` | Passed; emitted ESM, CJS, and declarations. |
+| `bun run test` | Passed: 10 test files, 111 tests, no type errors. |
+| `bun run typecheck` | Passed. |
+| `npm pack --dry-run` | Passed: six files, including `LICENSE`, `README.md`, and `dist/`. |
+
+### Self-review
+
+- Build now precedes every package-export import in the CI test flow.
+- Only the workflow order and required Task 5 report changed; tests and implementation remain untouched.
+- `verify` still uses frozen dependencies and still gates `publish`.
