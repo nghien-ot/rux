@@ -18,6 +18,7 @@ const transformedBody = {
   "~standard": {
     version: 1,
     vendor: "test",
+    types: { input: { name: "" }, output: { id: 0 } },
     validate: (value: unknown) => ({ value: { id: (value as { name: string }).name.length } }),
   },
 } satisfies TestSchema<{ name: string }, { id: number }>;
@@ -26,6 +27,7 @@ const querySchema = {
   "~standard": {
     version: 1,
     vendor: "test",
+    types: { input: { page: "" }, output: { page: 0 } },
     validate: (value: unknown) => ({ value: value as { page: number } }),
   },
 } satisfies TestSchema<{ page: string }, { page: number }>;
@@ -34,6 +36,7 @@ const responseSchema = {
   "~standard": {
     version: 1,
     vendor: "test",
+    types: { input: undefined as unknown, output: { id: 0 } },
     validate: (value: unknown) => ({ value: value as { id: number } }),
   },
 } satisfies TestSchema<unknown, { id: number }>;
@@ -42,6 +45,7 @@ const errorSchema = {
   "~standard": {
     version: 1,
     vendor: "test",
+    types: { input: undefined as unknown, output: { code: "" } },
     validate: (value: unknown) => ({ value: value as { code: string } }),
   },
 } satisfies TestSchema<unknown, { code: string }>;
