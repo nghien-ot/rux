@@ -11,7 +11,10 @@ import type {
 } from "../src/index.ts";
 import { createClient } from "../src/index.ts";
 
-type Issue = { readonly message: string; readonly path?: readonly PropertyKey[] };
+type Issue = {
+  readonly message: string;
+  readonly path?: readonly (PropertyKey | { readonly key: PropertyKey })[];
+};
 type TestSchema<Input, Output = Input> = StandardSchemaV1<Input, Output>;
 
 const transformedBody = {
