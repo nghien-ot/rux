@@ -62,8 +62,7 @@ describe("Standard Schema v1 validation", () => {
   });
 
   test("supports actual Zod schemas through their Standard Schema interface", async () => {
-    const moduleName = "zod";
-    const { z } = await import(moduleName);
+    const { z } = await import("zod");
     const schema = z.object({ input: z.string() }).transform(({ input }) => ({ output: input.trim() }));
     await expect(validate(schema, { input: " parsed " })).resolves.toEqual({
       ok: true,
@@ -81,4 +80,3 @@ describe("Standard Schema v1 validation", () => {
     }
   });
 });
-

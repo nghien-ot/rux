@@ -86,12 +86,15 @@ test("InferOutput is parsed output, InferInput is accepted input, and Infer equa
 test("client endpoint result is typed with success and HTTP failure payload", () => {
   type Result = Awaited<ReturnType<typeof api.getUser>>;
   expectTypeOf<Result>().toEqualTypeOf<RuxResult<{ id: number }, { code: string }>>();
+  expectTypeOf<ReturnType<typeof api.getUser>>().toEqualTypeOf<Promise<RuxResult<{ id: number }, { code: string }>>>();
   expectTypeOf<Extract<Result, { ok: true }>["value"]>().toEqualTypeOf<{ id: number }>();
   expectTypeOf<Extract<Result, { ok: false }>["error"]>().toEqualTypeOf<RuxError<{ code: string }>>();
 });
 
 test("endpoint invocation types path params and typed query fields", () => {
   type Options = NonNullable<Parameters<typeof api.getUser>[0]>;
+  expectTypeOf<"params" extends keyof Options ? true : false>().toEqualTypeOf<true>();
+  expectTypeOf<"query" extends keyof Options ? true : false>().toEqualTypeOf<true>();
   expectTypeOf<Options["params"]>().toEqualTypeOf<{ id: string }>();
   expectTypeOf<Options["query"]>().toMatchTypeOf<{ page: string }>();
   expectTypeOf<Options["query"]>().toMatchTypeOf<Record<string, string | number | boolean | readonly (string | number | boolean)[] | undefined>>();
@@ -99,10 +102,32 @@ test("endpoint invocation types path params and typed query fields", () => {
 
 test("POST invocation exposes parsed body input and typed numeric path params", () => {
   type Options = NonNullable<Parameters<typeof api.createUser>[0]>;
+  expectTypeOf<"params" extends keyof Options ? true : false>().toEqualTypeOf<true>();
+  expectTypeOf<"body" extends keyof Options ? true : false>().toEqualTypeOf<true>();
   expectTypeOf<Options["params"]>().toEqualTypeOf<{ id: number }>();
   expectTypeOf<Options["body"]>().toEqualTypeOf<{ name: string }>();
+  expectTypeOf<ReturnType<typeof api.createUser>>().toEqualTypeOf<Promise<RuxResult<{ id: number }, { code: string }>>>();
   expectTypeOf<Infer<typeof api.createUser, "response">>().toEqualTypeOf<{ id: number }>();
   expectTypeOf<Infer<typeof api.createUser, "body">>().toEqualTypeOf<{ name: string }>();
+});
+
+test("required path, query, and body inputs cannot be omitted", () => {
+  if (false) {
+    // @ts-expect-error required path params must be present
+    api.getUser({ query: { page: "1" } });
+    // @ts-expect-error required query must be present
+    api.getUser({ params: { id: "user-1" } });
+    // @ts-expect-error required body must be present
+    api.createUser({ params: { id: 1 } });
+  }
+});
+
+test("an endpoint without a response schema returns undefined on success", () => {
+  const noResponse = createClient({
+    baseUrl: "https://api.test",
+    endpoints: { ping: { method: "GET", path: "/ping" } },
+  });
+  expectTypeOf<ReturnType<typeof noResponse.ping>>().toEqualTypeOf<Promise<RuxResult<undefined, unknown>>>();
 });
 
 test("endpoint method is not an invocation option and GET has no body", () => {

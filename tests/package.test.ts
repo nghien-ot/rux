@@ -3,23 +3,39 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, test } from "vitest";
 
 const require = createRequire(import.meta.url);
+const packageName = "@nghien-ot/rux";
 
 describe("published package surface", () => {
-  test("loads the ESM entrypoint with the v1 factory", async () => {
-    const esm = await import(new URL("../dist/index.js", import.meta.url).href);
+  test("resolves package exports to the ESM and CommonJS entrypoints", async () => {
+    const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as {
+      readonly main: string;
+      readonly module: string;
+      readonly types: string;
+      readonly exports: Record<string, unknown>;
+    };
+    expect(packageJson.exports).toStrictEqual({
+      ".": {
+        types: "./dist/index.d.ts",
+        import: "./dist/index.js",
+        require: "./dist/index.cjs",
+      },
+    });
+    expect(packageJson.main).toBe("./dist/index.cjs");
+    expect(packageJson.module).toBe("./dist/index.js");
+    expect(packageJson.types).toBe("./dist/index.d.ts");
+
+    const esm = await import(packageName);
+    const cjs = require(packageName) as Record<string, unknown>;
     expect(typeof esm.createClient).toBe("function");
     expect("defineClient" in esm).toBe(false);
-  });
-
-  test("loads the CommonJS entrypoint with the same public v1 factory", async () => {
-    const cjs = require("../dist/index.cjs") as Record<string, unknown>;
     expect(typeof cjs.createClient).toBe("function");
     expect("defineClient" in cjs).toBe(false);
   });
 
-  test("does not include Zod runtime code in the ESM bundle", async () => {
-    const bundle = await readFile(new URL("../dist/index.js", import.meta.url), "utf8");
-    expect(bundle).not.toMatch(/(?:from|require\s*\()\s*["']zod["']/);
-    expect(bundle).not.toMatch(/node_modules[\\/]zod/);
+  test("does not include Zod runtime code in either published bundle", async () => {
+    const esmBundle = await readFile(new URL("../dist/index.js", import.meta.url), "utf8");
+    const cjsBundle = await readFile(new URL("../dist/index.cjs", import.meta.url), "utf8");
+    expect(esmBundle.toLowerCase()).not.toContain("zod");
+    expect(cjsBundle.toLowerCase()).not.toContain("zod");
   });
 });

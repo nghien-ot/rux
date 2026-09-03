@@ -173,11 +173,18 @@ describe("createClient", () => {
     await expect(client.ping()).resolves.toEqual({ ok: true, value: undefined });
   });
 
-  test("accepts an empty successful response as undefined with an optional response schema", async () => {
+  test("treats an endpoint without a response schema as an optional response", async () => {
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { ping: { method: "GET", path: "/ping" } } });
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    await expect(client.ping()).resolves.toEqual({ ok: true, value: undefined });
+  });
+
+  test("returns a validation failure when a required response schema receives an empty body", async () => {
     const response = schema<{ id: number }>(() => ({ value: { id: 1 } }));
     const client = createClient({ baseUrl: "https://api.test", endpoints: { ping: { method: "GET", path: "/ping", response } } });
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
-    await expect(client.ping()).resolves.toEqual({ ok: true, value: undefined });
+    const result = await client.ping();
+    expect(result).toEqual({ ok: false, error: { type: "validation", message: "Response body is empty" } });
   });
 
   test("accepts a 204 response as undefined", async () => {
@@ -211,7 +218,7 @@ describe("createClient", () => {
   });
 
   test("returns body serialization failures as request errors", async () => {
-    const body = schema(() => ({ value: undefined }));
+    const body = schema<Record<string, unknown>>((value) => ({ value: value as Record<string, unknown> }));
     const client = createClient({ baseUrl: "https://api.test", endpoints: { create: { method: "POST", path: "/users", body } } });
     const circular: Record<string, unknown> = {};
     circular.self = circular;
@@ -230,17 +237,26 @@ describe("createClient", () => {
     fetchMock.mockRejectedValueOnce(networkFailure);
     const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users" } } });
     await expect(client.get()).resolves.toEqual({ ok: false, error: { type: "network", message: "offline", cause: networkFailure } });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test("returns timeout as a request error and aborts fetch", async () => {
     vi.useFakeTimers();
+    let requestSignal: AbortSignal | undefined;
     fetchMock.mockImplementationOnce((_input: FetchInput, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      requestSignal = init?.signal ?? undefined;
       init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
     }));
     const client = createClient({ baseUrl: "https://api.test", timeoutMs: 50, endpoints: { get: { method: "GET", path: "/slow" } } });
     const pending = client.get();
     await vi.advanceTimersByTimeAsync(50);
-    await expect(pending).resolves.toMatchObject({ ok: false, error: { type: "request", message: "Request timed out" } });
+    const result = await pending;
+    expect(result).toEqual({ ok: false, error: { type: "request", message: "Request timed out", cause: requestSignal?.reason } });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(requestSignal?.aborted).toBe(true);
+    expect(requestSignal?.reason).toBeInstanceOf(DOMException);
+    expect((requestSignal?.reason as DOMException).name).toBe("TimeoutError");
+    expect((requestSignal?.reason as DOMException).message).toBe("Request timed out");
   });
 
   test("returns caller abort as a request error and preserves abort cause", async () => {
