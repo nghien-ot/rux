@@ -22,6 +22,14 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "license": "MIT",
   "files": [
     "dist"
   ],
@@ -31,7 +39,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --typecheck",
     "test:watch": "vitest --typecheck",
-    "qa:manual": "bun run build && bun test ./.qa/text.ts"
+    "qa:manual": "bun run build && bun test ./tests/package.test.ts"
   },
   "devDependencies": {
     "vite": "^8.0.3",
