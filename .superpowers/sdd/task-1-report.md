@@ -2,12 +2,13 @@
 
 ## Status
 
-REVISED_RED_CONFIRMED. Reviewer findings addressed in tests only; no `src/` files were modified.
+SECOND_REVISION_RED_CONFIRMED. Sagan findings addressed in tests only; no `src/` files were modified.
 
 ## Commits
 
 - Initial contract tests: `ec894e6` (`test: define rux v1 layered client contract`)
 - Revision tests: `624b7a3` (`test: address rux v1 contract review findings`)
+- Second revision tests: `5cfb6f4` (`test: address sagan task 1 findings`)
 
 ## Test command and output
 
@@ -23,8 +24,8 @@ Exact final summary:
 
 ```text
 Test Files  9 failed | 1 passed (10)
-Tests  51 failed | 30 passed (81)
-Type Errors  16 failed
+Tests  66 failed | 34 passed (100)
+Type Errors  17 failed
 error: script "test" exited with code 1
 ```
 
@@ -55,6 +56,10 @@ Failures are expected red-test evidence for missing v1 behavior/exports in curre
 - Exact `Promise<RuxResult<Success, Failure>>` assertions and compile-time required path/query/body presence checks were added, including omission errors.
 - Package tests assert the `exports` map, `main`/`module`/`types`, package-name ESM/CJS resolution, and no Zod text in either published bundle.
 - Timeout assertions use the exact result shape and verify one fetch call, aborted signal, and exact `TimeoutError` reason/message.
+- Query input type uses exact `toEqualTypeOf<{ page: string }>()` while omission checks remain.
+- Actual Zod invalid input is asserted as a normalized validation error with exact message and issue path.
+- Invalid runtime HTTP method and 500/503 HTTP failures are asserted.
+- Required body and query schemas reject null, empty object, empty array, empty string, and unexpected fields with exact validation results and zero fetch calls.
 
 ## Self-review
 
@@ -62,10 +67,11 @@ Failures are expected red-test evidence for missing v1 behavior/exports in curre
 - Precedence, case-insensitive headers, endpoint-only method, bracket params, query serialization, validation-before-fetch, HTTP/error schemas, empty responses, 204, invalid URL, serialization, JSON, network, timeout, caller abort, and configured fetch remain covered.
 - Type assertions cover `Infer`, `InferInput`, `InferOutput`, request input shapes, response/error payloads, exact Promise results, required inputs, and forbidden legacy options.
 - Assertions use exact values or exact relevant fields; no implementation internals are tested.
-- Only `tests/` changed in revision commit `624b7a3`; unrelated worktree files were not staged.
+- Only `tests/` changed in second-revision commit `5cfb6f4`; unrelated worktree files were not staged.
 
 ## Concerns
 
 - Package smoke tests intentionally require built `dist` artifacts and package exports; they remain red until packaging/build implementation lands.
 - Empty required-response and timeout error wording/shapes are contract choices asserted by these tests and should be retained or explicitly revised before implementation.
 - `zod@4.5.4` is dev-only for the real Standard Schema integration test.
+- Focused tests remain red until the v1 implementation is added; no focused run hung.
