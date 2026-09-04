@@ -252,7 +252,26 @@ async function executeRequest<E extends EndpointDefinition>(
 
   if (!response.ok) {
     if (!endpoint.error) {
-      return { ok: false, error: { type: "http", status: response.status, message: response.statusText || `HTTP ${response.status}` } };
+      let data: unknown;
+      let hasData = false;
+      try {
+        const text = await response.text();
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = text;
+        }
+        hasData = true;
+      } catch { /* preserve the HTTP failure when its body cannot be read */ }
+      return {
+        ok: false,
+        error: {
+          type: "http",
+          status: response.status,
+          message: response.statusText || `HTTP ${response.status}`,
+          ...(hasData ? { data } : {}),
+        },
+      };
     }
     const parsed = await parseJsonResponse(response, { phase: "error", status: response.status });
     if (!parsed.ok) return parsed;
