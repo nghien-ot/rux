@@ -51,34 +51,209 @@ Zod implements Standard Schema v1, so pass a Zod schema directly. Rux does not i
 
 `InferInput<S>` is the input accepted by a schema, `InferOutput<S>` is its parsed output, and `Infer<S>` aliases `InferOutput<S>`.
 
-## Layered request options
+## Usage guide
 
-Request options merge at three levels: client, endpoint, then invocation. Scalar invocation values win. Headers merge case-insensitively in the same order; later values replace earlier values. HTTP method is defined by the endpoint only.
+### Define schemas
+
+Rux accepts any validator implementing [Standard Schema v1](https://standardschema.dev/). Zod is optional application code, not a Rux dependency:
+
+```bash
+npm install @nghien-ot/rux zod
+```
+
+```ts
+import { z } from "zod";
+
+const userInput = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+});
+
+const userResponse = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string(),
+});
+
+const apiError = z.object({
+  code: z.string(),
+  detail: z.string().optional(),
+});
+```
+
+Zod transforms are applied before Rux returns a value or serializes a request. `InferInput<typeof userInput>` and `InferOutput<typeof userInput>` expose the input/output types when needed.
+
+### Configure endpoints
+
+`createClient` requires one absolute `baseUrl` and an `endpoints` map. Endpoint names become client methods.
+
+```ts
+const api = createClient({
+  baseUrl: "https://api.example.com/v1",
+  endpoints: {
+    getUser: {
+      method: "GET",
+      path: "/users/:id[string]",
+      response: userResponse,
+      error: apiError,
+    },
+    createUser: {
+      method: "POST",
+      path: "/users",
+      body: userInput,
+      response: userResponse,
+      error: apiError,
+    },
+  },
+});
+```
+
+Endpoint fields:
+
+| Field | Purpose |
+| --- | --- |
+| `method` | `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`. Method belongs to the endpoint. |
+| `path` | Relative path beginning with `/`. Typed parameters use `:name[string]`, `:name[number]`, or `:name[boolean]`. |
+| `request` | Endpoint-level `RequestInit` options, excluding `method` and `body`. |
+| `timeoutMs` | Endpoint timeout override. |
+| `query` | Standard Schema for query input. |
+| `body` | Standard Schema for `POST`, `PUT`, or `PATCH` body input. |
+| `response` | Standard Schema for successful JSON output. |
+| `error` | Standard Schema for non-2xx JSON error output. |
+
+### Call endpoints
+
+Path parameters, query input, body input, request overrides, and timeout are supplied at invocation:
+
+```ts
+const result = await api.createUser({
+  body: { name: "Ada", email: "ada@example.com" },
+  request: { headers: { "x-request-id": "request-123" } },
+  timeoutMs: 3_000,
+});
+
+if (result.ok) {
+  console.log(result.value.id);
+}
+```
+
+Typed path parameters are encoded with `encodeURIComponent`:
+
+```ts
+await api.getUser({ params: { id: "user/42" } });
+// Requests /users/user%2F42
+```
+
+Query values support strings, numbers, booleans, `null`, `undefined`, and arrays. `undefined` is omitted, `null` becomes an empty query value, and arrays produce repeated query parameters. A query schema receives input before serialization, so schema transforms can normalize it.
+
+Body schemas receive call input before serialization. Rux serializes their parsed output as JSON and adds `content-type: application/json` when no content type was supplied. `GET` and `DELETE` endpoints do not expose a typed `body` option.
+
+### Layer request options
+
+Transport options resolve from client to endpoint to invocation. Later values override earlier scalar values:
 
 ```ts
 const api = createClient({
   baseUrl: "https://api.example.com",
-  request: { credentials: "include", headers: { "x-source": "client" } },
+  request: {
+    credentials: "include",
+    headers: { "x-source": "client", "x-shared": "client" },
+  },
+  timeoutMs: 10_000,
   endpoints: {
     updateUser: {
       method: "PATCH",
       path: "/users/:id[string]",
-      request: { headers: { "x-source": "endpoint" } },
-      body: z.object({ name: z.string().trim() }),
-      response: user,
+      request: {
+        cache: "no-store",
+        headers: { "X-Source": "endpoint", "x-endpoint": "true" },
+      },
+      body: userInput,
+      response: userResponse,
     },
   },
 });
 
 await api.updateUser({
   params: { id: "42" },
-  body: { name: "  Ada  " },
-  request: { headers: { "X-Source": "call" } },
-  timeoutMs: 1_000,
+  body: { name: "Ada", email: "ada@example.com" },
+  request: {
+    headers: { "X-SOURCE": "call", "x-shared": "call" },
+  },
+  timeoutMs: 2_000,
 });
 ```
 
-Body and query schemas validate before `fetch` and serialize their parsed output. A response or error schema validates parsed JSON before it reaches `RuxResult`. A successful empty response without a response schema returns `undefined`.
+The final request has `x-source: call`, `x-shared: call`, `x-endpoint: true`, `credentials: "include"`, and `cache: "no-store"`. Header names merge case-insensitively. `baseUrl` and injected `fetch` are client-only; endpoint method, path parameters, query, and body are endpoint/call concerns.
+
+### Handle results and typed errors
+
+Calls never throw for expected request failures. Every call resolves to `RuxResult<Success, Failure>`:
+
+```ts
+const result = await api.getUser({ params: { id: "42" } });
+
+if (result.ok) {
+  // result.value: InferOutput<typeof userResponse>
+  console.log(result.value.name);
+} else {
+  switch (result.error.type) {
+    case "http":
+      console.error(result.error.status, result.error.data);
+      break;
+    case "validation":
+      console.error(result.error.phase, result.error.issues);
+      break;
+    case "network":
+      console.error(result.error.message, result.error.cause);
+      break;
+    case "request":
+      console.error(result.error.message, result.error.cause);
+      break;
+  }
+}
+```
+
+Error variants:
+
+- `request`: invalid URL, invalid path parameters, body serialization, timeout, or caller abort.
+- `network`: fetch failed before receiving an HTTP response.
+- `http`: non-2xx response. `status` is always present; `data` contains parsed and validated error output when `error` is configured.
+- `validation`: body, query, response, or error payload failed validation. `phase` identifies the boundary and `issues` contains Standard Schema issues.
+
+Response JSON is validated after parsing, so response transforms return parsed output. Empty successful responses return `undefined` when no response schema is configured. A non-empty successful response requires `response`; otherwise Rux returns a validation error. Invalid JSON returns a validation error.
+
+### Timeout, abort, and testing
+
+Use `timeoutMs` for automatic cancellation. Pass an `AbortSignal` through any `request` layer for caller-controlled cancellation; Rux combines it with its timeout signal:
+
+```ts
+const controller = new AbortController();
+
+const pending = api.getUser({
+  params: { id: "42" },
+  request: { signal: controller.signal },
+});
+
+controller.abort();
+const result = await pending;
+// result.ok === false && result.error.type === "request"
+```
+
+Inject `fetch` through client configuration for deterministic tests or custom runtimes:
+
+```ts
+const api = createClient({
+  baseUrl: "https://api.example.com",
+  fetch: async (input, init) => {
+    // test double, fetch wrapper, or runtime-specific implementation
+    return fetch(input, init);
+  },
+  endpoints: {
+    health: { method: "GET", path: "/health" },
+  },
+});
+```
 
 ## Errors
 
