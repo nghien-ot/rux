@@ -135,6 +135,11 @@ function raceWithAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> 
   });
 }
 
+function abortFailure(signal: AbortSignal, timedOut: boolean): RuxResult<never> {
+  const cause = signal.reason;
+  return requestFailure(timedOut ? "Request timed out" : abortMessage(cause), cause);
+}
+
 async function validateAt(
   schema: Parameters<typeof validate>[0],
   value: unknown,
@@ -181,43 +186,8 @@ async function executeRequest<E extends EndpointDefinition>(
     params?: unknown;
     query?: unknown;
   }) | undefined;
-  let parsedBody: unknown;
-  if (endpoint.body) {
-    const bodyResult = await validateAt(endpoint.body, input?.body, { phase: "body" });
-    if (!bodyResult.ok) return bodyResult;
-    parsedBody = bodyResult.value;
-  }
-
-  let parsedQuery: unknown = input?.query;
-  if (endpoint.query) {
-    const queryResult = await validateAt(endpoint.query, input?.query, { phase: "query" });
-    if (!queryResult.ok) return queryResult;
-    parsedQuery = queryResult.value;
-  }
-
-  const resolvedPath = resolvePath(endpoint.path, input?.params);
-  if (typeof resolvedPath !== "string") return resolvedPath;
-
-  let url: URL;
-  try {
-    url = new URL(resolvedPath, config.baseUrl);
-    appendQuery(url, parsedQuery);
-  } catch (cause) {
-    return requestFailure("Invalid URL");
-  }
-
-  let serializedBody: string | undefined;
-  if (endpoint.body) {
-    try {
-      serializedBody = JSON.stringify(parsedBody);
-    } catch (cause) {
-      return requestFailure("Failed to serialize request body", cause);
-    }
-  }
-
   const request = mergeRequestOptions(config.request, endpoint.request, options?.request);
   const headers = mergeHeaders(config.request?.headers, endpoint.request?.headers, options?.request?.headers);
-  if (endpoint.body && !headers.has("content-type")) headers.set("content-type", "application/json");
   const timeoutMs = options?.timeoutMs ?? endpoint.timeoutMs ?? config.timeoutMs;
   const callerSignal = request.signal;
   if (callerSignal?.aborted) {
@@ -236,29 +206,62 @@ async function executeRequest<E extends EndpointDefinition>(
     }, timeoutMs);
   }
 
-  const init: RequestInit = {
-    ...request,
-    headers,
-    method: endpoint.method,
-    ...(endpoint.body ? { body: serializedBody } : {}),
-    signal: controller.signal,
-  };
-
-  let response: Response;
   try {
+    let parsedBody: unknown;
+    if (endpoint.body) {
+      const bodyResult = await raceWithAbort(validateAt(endpoint.body, input?.body, { phase: "body" }), controller.signal);
+      if (!bodyResult.ok) return bodyResult;
+      parsedBody = bodyResult.value;
+    }
+
+    let parsedQuery: unknown = input?.query;
+    if (endpoint.query) {
+      const queryResult = await raceWithAbort(validateAt(endpoint.query, input?.query, { phase: "query" }), controller.signal);
+      if (!queryResult.ok) return queryResult;
+      parsedQuery = queryResult.value;
+    }
+
+    const resolvedPath = resolvePath(endpoint.path, input?.params);
+    if (typeof resolvedPath !== "string") return resolvedPath;
+
+    let url: URL;
+    try {
+      url = new URL(resolvedPath, config.baseUrl);
+      appendQuery(url, parsedQuery);
+    } catch {
+      return requestFailure("Invalid URL");
+    }
+
+    let serializedBody: string | undefined;
+    if (endpoint.body) {
+      try {
+        serializedBody = JSON.stringify(parsedBody);
+      } catch (cause) {
+        return requestFailure("Failed to serialize request body", cause);
+      }
+    }
+
+    if (endpoint.body && !headers.has("content-type")) headers.set("content-type", "application/json");
+    const init: RequestInit = {
+      ...request,
+      headers,
+      method: endpoint.method,
+      ...(endpoint.body ? { body: serializedBody } : {}),
+      signal: controller.signal,
+    };
+
+    let response: Response;
     try {
       response = await raceWithAbort((config.fetch ?? globalThis.fetch)(url.toString(), init), controller.signal);
     } catch (cause) {
       if (controller.signal.aborted) {
-        const abortCause = controller.signal.reason;
-        return requestFailure(timedOut ? "Request timed out" : abortMessage(abortCause), abortCause);
+        return abortFailure(controller.signal, timedOut);
       }
       return { ok: false, error: { type: "network", message: cause instanceof Error ? cause.message : "Network error", cause } };
     }
 
     if (controller.signal.aborted) {
-      const abortCause = controller.signal.reason;
-      return requestFailure(timedOut ? "Request timed out" : abortMessage(abortCause), abortCause);
+      return abortFailure(controller.signal, timedOut);
     }
 
     try {
@@ -320,11 +323,13 @@ async function executeRequest<E extends EndpointDefinition>(
       })(), controller.signal);
     } catch (cause) {
       if (controller.signal.aborted) {
-        const abortCause = controller.signal.reason;
-        return requestFailure(timedOut ? "Request timed out" : abortMessage(abortCause), abortCause);
+        return abortFailure(controller.signal, timedOut);
       }
       throw cause;
     }
+  } catch (cause) {
+    if (controller.signal.aborted) return abortFailure(controller.signal, timedOut);
+    throw cause;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
     callerSignal?.removeEventListener("abort", onCallerAbort);
