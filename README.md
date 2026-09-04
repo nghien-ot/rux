@@ -283,11 +283,10 @@ bun install --frozen-lockfile
 bun run typecheck
 bun run test
 bun run build
-bun run qa:manual
 npm pack --dry-run
 ```
 
-`qa:manual` rebuilds and smoke-tests the published package surface. See [`.qa/MANUAL_QA.md`](.qa/MANUAL_QA.md) for release checks.
+`tests/package.test.ts` smoke-tests the published package surface after `bun run build`.
 
 ## License
 
