@@ -12,6 +12,8 @@ describe("published package surface", () => {
       readonly module: string;
       readonly types: string;
       readonly exports: Record<string, unknown>;
+      readonly devDependencies: Record<string, string>;
+      readonly peerDependencies?: Record<string, string>;
     };
     expect(packageJson.exports).toStrictEqual({
       ".": {
@@ -23,6 +25,8 @@ describe("published package surface", () => {
     expect(packageJson.main).toBe("./dist/index.cjs");
     expect(packageJson.module).toBe("./dist/index.js");
     expect(packageJson.types).toBe("./dist/index.d.ts");
+    expect(packageJson.devDependencies.typescript).toBe("^7.0.2");
+    expect(packageJson.peerDependencies).toBeUndefined();
 
     const esm = await import(packageName);
     const cjs = require(packageName) as Record<string, unknown>;
