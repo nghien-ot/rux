@@ -186,6 +186,10 @@ async function executeRequest<E extends EndpointDefinition>(
     params?: unknown;
     query?: unknown;
   }) | undefined;
+  const preAbortSignal = options?.request?.signal;
+  if (preAbortSignal?.aborted) {
+    return requestFailure(abortMessage(preAbortSignal.reason), preAbortSignal.reason);
+  }
   const request = mergeRequestOptions(config.request, endpoint.request, options?.request);
   const headers = mergeHeaders(config.request?.headers, endpoint.request?.headers, options?.request?.headers);
   const timeoutMs = options?.timeoutMs ?? endpoint.timeoutMs ?? config.timeoutMs;

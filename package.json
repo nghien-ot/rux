@@ -38,7 +38,7 @@
     "dev": "vite build --watch",
     "typecheck": "tsc --noEmit",
     "test": "vite build && vitest run --typecheck",
-    "test:watch": "vite build && vitest --typecheck"
+    "test:watch": "vite build && vitest --typecheck --exclude tests/package.test.ts"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
