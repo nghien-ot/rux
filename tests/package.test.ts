@@ -48,4 +48,12 @@ describe("published package surface", () => {
     expect(esmBundle.toLowerCase()).not.toContain("zod");
     expect(cjsBundle.toLowerCase()).not.toContain("zod");
   });
+
+  test("publishes declaration file at package types path", async () => {
+    const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as {
+      readonly types: string;
+    };
+    const declaration = await readFile(new URL(`../${packageJson.types}`, import.meta.url), "utf8");
+    expect(declaration).toContain("createClient");
+  });
 });

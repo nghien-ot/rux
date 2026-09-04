@@ -3,7 +3,7 @@
 [![npm package](https://img.shields.io/npm/v/%40nghien-ot%2Frux?logo=npm&label=npm)](https://www.npmjs.com/package/@nghien-ot/rux)
 [![GitHub repository](https://img.shields.io/badge/GitHub-rux-181717?logo=github)](https://github.com/nghien-ot/rux)
 
-Current package version: `0.1.4`
+Current package version: `0.2.1`
 
 A type-safe HTTP client for TypeScript. Rux validates through the [Standard Schema v1](https://standardschema.dev/) protocol and has no runtime dependencies.
 
@@ -13,6 +13,8 @@ A type-safe HTTP client for TypeScript. Rux validates through the [Standard Sche
 bun add @nghien-ot/rux
 # or: npm install @nghien-ot/rux
 ```
+
+Rux ships its TypeScript declarations at `dist/index.d.ts`. TypeScript 7 is used for Rux development, but Rux has no TypeScript peer dependency for consumers.
 
 ## `createClient`
 
@@ -279,6 +281,8 @@ npm pack --dry-run
 ```
 
 `tests/package.test.ts` smoke-tests the published package surface after `bun run build`.
+
+The build must produce `dist/index.d.ts` before publishing. This file is referenced by the package `types` and `exports` fields.
 
 ## License
 

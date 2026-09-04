@@ -2,7 +2,7 @@ import { defineConfig } from "vite"
 import dts from "vite-plugin-dts"
 
 export default defineConfig({
-    plugins: [dts({ exclude: ["tests/**"] })],
+    plugins: [dts({ entryRoot: "src", exclude: ["tests/**"] })],
     build: {
         lib: {
             entry: "src/index.ts",
