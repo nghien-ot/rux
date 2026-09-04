@@ -7,4 +7,4 @@ export type {
   SchemaToType,
 } from "./types.ts";
 
-export { validate, validateResponse, handleValidation } from "./validate.ts";
+export { validate } from "./validate.ts";

@@ -27,9 +27,15 @@ describe("published package surface", () => {
     const esm = await import(packageName);
     const cjs = require(packageName) as Record<string, unknown>;
     expect(typeof esm.createClient).toBe("function");
+    expect(typeof esm.validate).toBe("function");
     expect("defineClient" in esm).toBe(false);
+    expect("handleValidation" in esm).toBe(false);
+    expect("validateResponse" in esm).toBe(false);
     expect(typeof cjs.createClient).toBe("function");
+    expect(typeof cjs.validate).toBe("function");
     expect("defineClient" in cjs).toBe(false);
+    expect("handleValidation" in cjs).toBe(false);
+    expect("validateResponse" in cjs).toBe(false);
   });
 
   test("does not include Zod runtime code in either published bundle", async () => {

@@ -11,13 +11,24 @@ import type {
 
 const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const PATH_PARAM = /:([^/\[\]]+)\[(string|number|boolean)\]/g;
+type ValidationError = Extract<RuxError, { type: "validation" }>;
+type ValidationPhase = NonNullable<ValidationError["phase"]>;
+type ValidationContext = { phase: ValidationPhase; status?: number };
 
 function requestFailure(message: string, cause?: unknown): RuxResult<never> {
   return { ok: false, error: cause === undefined ? { type: "request", message } : { type: "request", message, cause } };
 }
 
-function validationFailure(error: RuxError): RuxResult<never> {
+function validationFailure(error: ValidationError): RuxResult<never> {
   return { ok: false, error };
+}
+
+function defineHidden<T extends object, K extends PropertyKey>(
+  target: T,
+  key: K,
+  value: unknown,
+): void {
+  Object.defineProperty(target, key, { value, enumerable: false });
 }
 
 function mergeHeaders(...sources: Array<RequestInit["headers"] | undefined>): Headers {
@@ -79,16 +90,36 @@ function abortMessage(reason: unknown): string {
   return reason instanceof Error && reason.message ? reason.message : "Request aborted";
 }
 
-function attachErrorContext(
+function createValidationError(
+  message: string,
+  options: {
+    issues?: ValidationError["issues"];
+    cause?: unknown;
+    phase?: ValidationPhase;
+    status?: number;
+  } = {},
+): ValidationError {
+  const error = {
+    type: "validation",
+    message,
+    ...(options.issues === undefined ? {} : { issues: options.issues }),
+    ...(options.cause === undefined ? {} : { cause: options.cause }),
+  } as ValidationError;
+
+  if (options.issues === undefined) defineHidden(error, "issues", []);
+  if (options.phase !== undefined) defineHidden(error, "phase", options.phase);
+  if (options.status !== undefined) defineHidden(error, "status", options.status);
+
+  return error;
+}
+
+function attachValidationContext(
   result: RuxResult<unknown>,
-  status: number,
-  phase: "error",
+  context: ValidationContext,
 ): RuxResult<unknown> {
   if (!result.ok && result.error.type === "validation") {
-    Object.defineProperties(result.error, {
-      status: { value: status, enumerable: false },
-      phase: { value: phase, enumerable: false },
-    });
+    defineHidden(result.error, "phase", context.phase);
+    if (context.status !== undefined) defineHidden(result.error, "status", context.status);
   }
   return result;
 }
@@ -96,33 +127,34 @@ function attachErrorContext(
 async function validateAt(
   schema: Parameters<typeof validate>[0],
   value: unknown,
-  status?: number,
+  context: ValidationContext,
 ): Promise<RuxResult<unknown>> {
   try {
     const result = await validate(schema, value);
-    return status === undefined ? result : attachErrorContext(result, status, "error");
+    return attachValidationContext(result, context);
   } catch (cause) {
-    const result = validationFailure({
-      type: "validation",
-      message: cause instanceof Error && cause.message ? cause.message : "Schema validation failed",
-      cause,
-    });
-    return status === undefined ? result : attachErrorContext(result, status, "error");
+    return validationFailure(createValidationError(
+      cause instanceof Error && cause.message ? cause.message : "Schema validation failed",
+      { cause, phase: context.phase, status: context.status },
+    ));
   }
 }
 
-async function parseJsonResponse(response: Response): Promise<{ ok: true; value: unknown } | RuxResult<never>> {
+async function parseJsonResponse(
+  response: Response,
+  context: ValidationContext,
+): Promise<{ ok: true; value: unknown } | RuxResult<never>> {
   let text: string;
   try {
     text = await response.text();
   } catch (cause) {
-    return validationFailure({ type: "validation", message: "Response body is not valid JSON", cause });
+    return validationFailure(createValidationError("Response body is not valid JSON", { cause, phase: context.phase, status: context.status }));
   }
   if (text === "") return { ok: true, value: undefined };
   try {
     return { ok: true, value: JSON.parse(text) };
   } catch (cause) {
-    return validationFailure({ type: "validation", message: "Response body is not valid JSON", cause });
+    return validationFailure(createValidationError("Response body is not valid JSON", { cause, phase: context.phase, status: context.status }));
   }
 }
 
@@ -140,14 +172,14 @@ async function executeRequest<E extends EndpointDefinition>(
   }) | undefined;
   let parsedBody: unknown;
   if (endpoint.body) {
-    const bodyResult = await validateAt(endpoint.body, input?.body);
+    const bodyResult = await validateAt(endpoint.body, input?.body, { phase: "body" });
     if (!bodyResult.ok) return bodyResult;
     parsedBody = bodyResult.value;
   }
 
   let parsedQuery: unknown = input?.query;
   if (endpoint.query) {
-    const queryResult = await validateAt(endpoint.query, input?.query);
+    const queryResult = await validateAt(endpoint.query, input?.query, { phase: "query" });
     if (!queryResult.ok) return queryResult;
     parsedQuery = queryResult.value;
   }
@@ -222,9 +254,9 @@ async function executeRequest<E extends EndpointDefinition>(
     if (!endpoint.error) {
       return { ok: false, error: { type: "http", status: response.status, message: response.statusText || `HTTP ${response.status}` } };
     }
-    const parsed = await parseJsonResponse(response);
-    if (!parsed.ok) return attachErrorContext(parsed, response.status, "error");
-    const errorResult = await validateAt(endpoint.error, parsed.value, response.status);
+    const parsed = await parseJsonResponse(response, { phase: "error", status: response.status });
+    if (!parsed.ok) return parsed;
+    const errorResult = await validateAt(endpoint.error, parsed.value, { phase: "error", status: response.status });
     if (!errorResult.ok) return errorResult;
     return {
       ok: false,
@@ -237,16 +269,16 @@ async function executeRequest<E extends EndpointDefinition>(
     };
   }
 
-  const parsed = await parseJsonResponse(response);
+  const parsed = await parseJsonResponse(response, { phase: "response" });
   if (!parsed.ok) return parsed;
   if (parsed.value === undefined) {
     if (!endpoint.response) return { ok: true, value: undefined };
-    return validationFailure({ type: "validation", message: "Response body is empty" });
+    return validationFailure(createValidationError("Response body is empty", { phase: "response" }));
   }
   if (!endpoint.response) {
-    return validationFailure({ type: "validation", message: "Response schema is required for a non-empty body" });
+    return validationFailure(createValidationError("Response schema is required for a non-empty body", { phase: "response" }));
   }
-  return validateAt(endpoint.response, parsed.value);
+  return validateAt(endpoint.response, parsed.value, { phase: "response" });
 }
 
 async function execute<E extends EndpointDefinition>(

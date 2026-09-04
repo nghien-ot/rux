@@ -98,6 +98,38 @@ test("client endpoint result is typed with success and HTTP failure payload", ()
   expectTypeOf<Extract<Result, { ok: false }>["error"]>().toEqualTypeOf<RuxError<{ code: string }>>();
 });
 
+test("RuxError discriminates precise request, network, http, and validation fields", () => {
+  type Failure = { code: string };
+
+  expectTypeOf<Extract<RuxError<Failure>, { type: "request" }>>().toEqualTypeOf<{
+    type: "request";
+    message: string;
+    cause?: unknown;
+  }>();
+
+  expectTypeOf<Extract<RuxError<Failure>, { type: "network" }>>().toEqualTypeOf<{
+    type: "network";
+    message: string;
+    cause: unknown;
+  }>();
+
+  expectTypeOf<Extract<RuxError<Failure>, { type: "http" }>>().toEqualTypeOf<{
+    type: "http";
+    status: number;
+    message: string;
+    data?: Failure;
+  }>();
+
+  expectTypeOf<Extract<RuxError<Failure>, { type: "validation" }>>().toEqualTypeOf<{
+    type: "validation";
+    message: string;
+    issues: readonly Issue[];
+    phase?: "body" | "query" | "response" | "error";
+    status?: number;
+    cause?: unknown;
+  }>();
+});
+
 test("endpoint invocation types path params and typed query fields", () => {
   type Options = NonNullable<Parameters<typeof api.getUser>[0]>;
   expectTypeOf<"params" extends keyof Options ? true : false>().toEqualTypeOf<true>();

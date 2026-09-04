@@ -66,3 +66,57 @@ The `verify` job ran `bun run test` before `bun run build`. `tests/package.test.
 - Build now precedes every package-export import in the CI test flow.
 - Only the workflow order and required Task 5 report changed; tests and implementation remain untouched.
 - `verify` still uses frozen dependencies and still gates `publish`.
+
+## Final review fix wave — legacy validation surface and discriminated errors
+
+### Scope
+
+- Removed legacy public validation wrappers so v1 exposes a single async Standard Schema validation path: `validate`.
+- Tightened `RuxError` into a discriminated union so narrowing exposes request, network, HTTP, and validation-specific fields.
+- Preserved visible runtime result shapes while attaching hidden validation metadata where runtime already tracks it.
+
+### Files
+
+- `src/schema/validate.ts`
+- `src/schema/index.ts`
+- `src/index.ts`
+- `src/types/index.ts`
+- `src/client/index.ts`
+- `tests/types.test.ts`
+- `tests/package.test.ts`
+- `tests/client.test.ts`
+- `tests/standard-schema.test.ts`
+
+### TDD
+
+- Acting as Test Author, added focused contracts for:
+  - no public `handleValidation` or `validateResponse` export from the published package
+  - exact `RuxError` discriminant narrowing for `request`, `network`, `http`, and `validation`
+- Acting as Test Reviewer, approved the new suite before implementation.
+- Red proof before source edits:
+
+```text
+bun run test -- tests/types.test.ts tests/package.test.ts
+
+FAIL tests/package.test.ts > expected "handleValidation" export to be absent
+FAIL tests/types.test.ts > RuxError discriminates precise request, network, http, and validation fields
+```
+
+### Verification
+
+| Command | Result |
+| --- | --- |
+| `bun run build` | Passed; rebuilt `dist/` with legacy validation wrappers removed from the public package surface. |
+| `bun run test -- tests/types.test.ts tests/package.test.ts` | Passed: 4 test files, 28 tests, no type errors. |
+| `bun run typecheck` | Passed. |
+| `bun run test` | Passed: 10 test files, 113 tests, no type errors. |
+| `bun run build` | Passed; emitted updated ESM, CJS, and declarations. |
+| `bun run qa:manual` | Passed: rebuild plus package smoke test, 2 passed. |
+
+### Self-review
+
+- `validateResponse` and `handleValidation` are removed from both schema and root barrels; `validate` remains the sole public validation entrypoint.
+- `RuxError` now narrows precisely: request has message and optional cause, network has message and cause, HTTP has required status/message with optional typed data, validation has message/issues with optional phase/status/cause.
+- Validation metadata added for body/query/response/error phases stays non-enumerable, so existing result equality behavior remains unchanged.
+- Existing tests that accessed variant-only fields now narrow first; behavior assertions did not weaken.
+- Unrelated worktree changes in `.superpowers/sdd/task-4-report.md` and untracked `task-*-brief.md` files remain untouched.

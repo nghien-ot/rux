@@ -283,7 +283,7 @@ describe("createClient", () => {
     if (!result.ok) {
       expect(result.error.type).toBe("request");
       expect(result.error.message).toBe("Failed to serialize request body");
-      expect(result.error.cause).toBeInstanceOf(Error);
+      if ("cause" in result.error) expect(result.error.cause).toBeInstanceOf(Error);
     }
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });

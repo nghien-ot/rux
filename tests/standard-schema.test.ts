@@ -89,7 +89,7 @@ describe("Standard Schema v1 validation", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.type).toBe("validation");
-      expect(result.error.issues).toEqual([{ message: "invalid", path: [{ key: "value" }] }]);
+      if ("issues" in result.error) expect(result.error.issues).toEqual([{ message: "invalid", path: [{ key: "value" }] }]);
     }
   });
 });

@@ -46,15 +46,41 @@ export type ClientConfig<
   endpoints: E;
 };
 
-export type RuxError<Failure = unknown> = {
-  type: "request" | "network" | "http" | "validation";
+type ValidationPhase = "body" | "query" | "response" | "error";
+
+type RequestError = {
+  type: "request";
   message: string;
   cause?: unknown;
-  status?: number;
-  issues?: readonly StandardSchemaIssue[];
-  data?: Failure;
-  phase?: "body" | "query" | "response" | "error";
 };
+
+type NetworkError = {
+  type: "network";
+  message: string;
+  cause: unknown;
+};
+
+type HttpError<Failure> = {
+  type: "http";
+  status: number;
+  message: string;
+  data?: Failure;
+};
+
+type ValidationError = {
+  type: "validation";
+  message: string;
+  issues: readonly StandardSchemaIssue[];
+  phase?: ValidationPhase;
+  status?: number;
+  cause?: unknown;
+};
+
+export type RuxError<Failure = unknown> =
+  | RequestError
+  | NetworkError
+  | HttpError<Failure>
+  | ValidationError;
 
 export type RuxResult<Success, Failure = unknown> =
   | { ok: true; value: Success }

@@ -1,6 +1,6 @@
 export { createClient } from "./client/index.ts";
 
-export { handleValidation, validate, validateResponse } from "./schema/index.ts";
+export { validate } from "./schema/index.ts";
 
 export type {
 
