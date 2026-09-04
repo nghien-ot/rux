@@ -5,7 +5,7 @@ type Issue = { readonly message: string; readonly path?: readonly PropertyKey[] 
 type SchemaResult<Output> = { readonly value: Output } | { readonly issues: readonly Issue[] };
 type FetchInput = string | URL | Request;
 
-function schema<Output>(validateValue: (value: unknown) => SchemaResult<Output>) {
+function schema<Output>(validateValue: (value: unknown) => SchemaResult<Output> | Promise<SchemaResult<Output>>) {
   return {
     "~standard": { version: 1 as const, vendor: "client-test", validate: validateValue },
   };
@@ -159,6 +159,44 @@ describe("createClient", () => {
     const query = schema(() => ({ issues: [{ message: "query invalid", path: ["page"] }] }));
     const client = createClient({ baseUrl: "https://api.test", endpoints: { search: { method: "GET", path: "/search", query } } });
     await expect(client.search({ query: { page: "not-a-number" } })).resolves.toEqual({ ok: false, error: { type: "validation", message: "query invalid", issues: [{ message: "query invalid", path: ["page"] }], phase: "query" } });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  test("returns timeout while async body validation remains pending", async () => {
+    vi.useFakeTimers();
+    const body = schema<{ name: string }>(() => new Promise<SchemaResult<{ name: string }>>(() => {}));
+    const client = createClient({ baseUrl: "https://api.test", timeoutMs: 50, endpoints: { create: { method: "POST", path: "/users", body } } });
+    const pending = client.create({ body: { name: "Ada" } });
+    const result = Promise.race([
+      pending,
+      new Promise<{ guard: true }>((resolve) => setTimeout(() => resolve({ guard: true }), 51)),
+    ]);
+
+    await vi.advanceTimersByTimeAsync(51);
+
+    await expect(result).resolves.toEqual({
+      ok: false,
+      error: { type: "request", message: "Request timed out", cause: expect.any(DOMException) },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  test("returns timeout while async query validation remains pending", async () => {
+    vi.useFakeTimers();
+    const query = schema<{ page: string }>(() => new Promise<SchemaResult<{ page: string }>>(() => {}));
+    const client = createClient({ baseUrl: "https://api.test", timeoutMs: 50, endpoints: { search: { method: "GET", path: "/search", query } } });
+    const pending = client.search({ query: { page: "1" } });
+    const result = Promise.race([
+      pending,
+      new Promise<{ guard: true }>((resolve) => setTimeout(() => resolve({ guard: true }), 51)),
+    ]);
+
+    await vi.advanceTimersByTimeAsync(51);
+
+    await expect(result).resolves.toEqual({
+      ok: false,
+      error: { type: "request", message: "Request timed out", cause: expect.any(DOMException) },
+    });
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
@@ -439,6 +477,58 @@ describe("createClient", () => {
       error: { type: "request", message: "cancelled before request", cause: abortReason },
     });
     expect(configuredFetch).toHaveBeenCalledTimes(0);
+  });
+
+  test("does not invoke pending body validation or fetch when the caller signal is already aborted", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const abortReason = new Error("cancelled before body validation");
+    controller.abort(abortReason);
+    const body = vi.fn(() => new Promise<SchemaResult<{ name: string }>>(() => {}));
+    const client = createClient({
+      baseUrl: "https://api.test",
+      endpoints: { create: { method: "POST", path: "/users", body: schema(body) } },
+    });
+
+    const pending = client.create({ body: { name: "Ada" }, request: { signal: controller.signal } });
+    const result = Promise.race([
+      pending,
+      new Promise<{ guard: true }>((resolve) => setTimeout(() => resolve({ guard: true }), 1)),
+    ]);
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(result).resolves.toEqual({
+      ok: false,
+      error: { type: "request", message: "cancelled before body validation", cause: abortReason },
+    });
+    expect(body).toHaveBeenCalledTimes(0);
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  test("does not invoke pending query validation or fetch when the caller signal is already aborted", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const abortReason = new Error("cancelled before query validation");
+    controller.abort(abortReason);
+    const query = vi.fn(() => new Promise<SchemaResult<{ page: string }>>(() => {}));
+    const client = createClient({
+      baseUrl: "https://api.test",
+      endpoints: { search: { method: "GET", path: "/search", query: schema(query) } },
+    });
+
+    const pending = client.search({ query: { page: "1" }, request: { signal: controller.signal } });
+    const result = Promise.race([
+      pending,
+      new Promise<{ guard: true }>((resolve) => setTimeout(() => resolve({ guard: true }), 1)),
+    ]);
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(result).resolves.toEqual({
+      ok: false,
+      error: { type: "request", message: "cancelled before query validation", cause: abortReason },
+    });
+    expect(query).toHaveBeenCalledTimes(0);
+    expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
   test("returns caller abort when an HTTP error body remains pending", async () => {
