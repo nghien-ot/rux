@@ -315,6 +315,7 @@ describe("createClient", () => {
       ok: false,
       error: { type: "request", message: "cancelled during body validation", cause: abortReason },
     });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
   test("returns caller abort while async query validation remains pending", async () => {
@@ -336,6 +337,7 @@ describe("createClient", () => {
       ok: false,
       error: { type: "request", message: "cancelled during query validation", cause: abortReason },
     });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
   test.each(boundaryInputs)("rejects %s body input through the required body schema", async (_label, input) => {
