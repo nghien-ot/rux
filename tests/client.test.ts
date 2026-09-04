@@ -244,6 +244,16 @@ describe("createClient", () => {
     expect(result.error.status).toBe(400);
   });
 
+  test("rejects an empty configured HTTP error body even when the schema accepts undefined", async () => {
+    const error = schema<undefined>((value) => ({ value: value as undefined }));
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users/1", error } } });
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 422, statusText: "Unprocessable Content" }));
+    await expect(client.get()).resolves.toEqual({
+      ok: false,
+      error: { type: "validation", message: "Response body is not valid JSON", issues: [], phase: "error", status: 422 },
+    });
+  });
+
   test.each([
     [500, "Internal Server Error"],
     [503, "Service Unavailable"],
@@ -357,6 +367,28 @@ describe("createClient", () => {
     expect((requestSignal?.reason as DOMException).message).toBe("Request timed out");
   });
 
+  test("returns timeout when an injected fetch ignores its abort signal and never settles", async () => {
+    vi.useFakeTimers();
+    const configuredFetch = vi.fn(() => new Promise<Response>(() => {}));
+    const client = createClient({
+      baseUrl: "https://api.test",
+      fetch: configuredFetch,
+      timeoutMs: 50,
+      endpoints: { get: { method: "GET", path: "/slow" } },
+    });
+    const pending = client.get();
+    const result = Promise.race([
+      pending,
+      new Promise<{ guard: true }>((resolve) => setTimeout(() => resolve({ guard: true }), 51)),
+    ]);
+    await vi.advanceTimersByTimeAsync(51);
+    await expect(result).resolves.toEqual({
+      ok: false,
+      error: { type: "request", message: "Request timed out", cause: expect.any(DOMException) },
+    });
+    expect(configuredFetch).toHaveBeenCalledTimes(1);
+  });
+
   test("returns timeout when a configured HTTP error body remains pending", async () => {
     vi.useFakeTimers();
     const error = schema<{ code: string }>((value) => ({ value: value as { code: string } }));
@@ -390,6 +422,23 @@ describe("createClient", () => {
     const pending = client.get({ request: { signal: controller.signal } });
     controller.abort(abortReason);
     await expect(pending).resolves.toEqual({ ok: false, error: { type: "request", message: "cancelled by caller", cause: abortReason } });
+  });
+
+  test("does not invoke fetch when the caller signal is already aborted", async () => {
+    const controller = new AbortController();
+    const abortReason = new Error("cancelled before request");
+    controller.abort(abortReason);
+    const configuredFetch = vi.fn(async () => jsonResponse({ ignored: true }));
+    const client = createClient({
+      baseUrl: "https://api.test",
+      fetch: configuredFetch,
+      endpoints: { get: { method: "GET", path: "/users" } },
+    });
+    await expect(client.get({ request: { signal: controller.signal } })).resolves.toEqual({
+      ok: false,
+      error: { type: "request", message: "cancelled before request", cause: abortReason },
+    });
+    expect(configuredFetch).toHaveBeenCalledTimes(0);
   });
 
   test("returns caller abort when an HTTP error body remains pending", async () => {

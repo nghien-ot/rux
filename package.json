@@ -37,7 +37,7 @@
     "build": "vite build",
     "dev": "vite build --watch",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --typecheck",
+    "test": "vite build && vitest run --typecheck",
     "test:watch": "vitest --typecheck"
   },
   "devDependencies": {

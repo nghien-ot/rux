@@ -220,13 +220,15 @@ async function executeRequest<E extends EndpointDefinition>(
   if (endpoint.body && !headers.has("content-type")) headers.set("content-type", "application/json");
   const timeoutMs = options?.timeoutMs ?? endpoint.timeoutMs ?? config.timeoutMs;
   const callerSignal = request.signal;
+  if (callerSignal?.aborted) {
+    return requestFailure(abortMessage(callerSignal.reason), callerSignal.reason);
+  }
   const controller = new AbortController();
   let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const onCallerAbort = () => controller.abort(callerSignal?.reason);
 
-  if (callerSignal?.aborted) onCallerAbort();
-  else callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
+  callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
   if (timeoutMs !== undefined) {
     timer = setTimeout(() => {
       timedOut = true;
@@ -245,7 +247,7 @@ async function executeRequest<E extends EndpointDefinition>(
   let response: Response;
   try {
     try {
-      response = await (config.fetch ?? globalThis.fetch)(url.toString(), init);
+      response = await raceWithAbort((config.fetch ?? globalThis.fetch)(url.toString(), init), controller.signal);
     } catch (cause) {
       if (controller.signal.aborted) {
         const abortCause = controller.signal.reason;
@@ -286,6 +288,12 @@ async function executeRequest<E extends EndpointDefinition>(
           }
           const parsed = await parseJsonResponse(response, { phase: "error", status: response.status });
           if (!parsed.ok) return parsed;
+          if (parsed.value === undefined) {
+            return validationFailure(createValidationError("Response body is not valid JSON", {
+              phase: "error",
+              status: response.status,
+            }));
+          }
           const errorResult = await validateAt(endpoint.error, parsed.value, { phase: "error", status: response.status });
           if (!errorResult.ok) return errorResult;
           return {

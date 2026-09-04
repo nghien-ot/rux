@@ -190,6 +190,15 @@ test("endpoint method is not an invocation option and GET has no body", () => {
   }
 });
 
+test("endpoint configuration has no type-only error override", () => {
+  expectTypeOf<"errorType" extends keyof EndpointDefinition ? true : false>().toEqualTypeOf<false>();
+  if (false) {
+    // @ts-expect-error error payload types come only from an error schema
+    const endpoint: EndpointDefinition = { method: "GET", path: "/users", errorType: { code: "NOT_FOUND" } };
+    void endpoint;
+  }
+});
+
 test("bracket path params map string, number, and boolean segments", () => {
   const typed = createClient({
     baseUrl: "https://api.test",
