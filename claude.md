@@ -12,7 +12,7 @@ You are working on **Rux**, a declarative, type-safe HTTP client library for Typ
 
 ## TDD Hard Constraints
 
-Test-Driven Development is **mandatory** for this project. The full pipeline is defined in `TDD.md`. Agent roles are defined in `AGENTS.md`. The following constraints are non-optional:
+Test-Driven Development is **mandatory** for this project. Agent roles and reviewer gates are defined in `AGENTS.md`. The following constraints are non-optional:
 
 - MUST NOT write implementation before tests are complete and reviewed.
 - MUST NOT infer behavior from existing code. Tests define behavior.
@@ -45,7 +45,7 @@ Test-Driven Development is **mandatory** for this project. The full pipeline is 
 
 ## When Writing Tests
 
-Tests MUST be written **before** implementation. See `TDD.md` for the full mandatory pipeline.
+Tests MUST be written **before** implementation. Follow the mandatory pipeline and reviewer gates in `AGENTS.md`.
 
 1. Use **Vitest** (`describe`, `test`, `expect`, `beforeEach`, `afterEach` from `vitest`).
 2. Test files live in `tests/` with `.test.ts` extension.
@@ -62,8 +62,8 @@ Tests MUST be written **before** implementation. See `TDD.md` for the full manda
 
 Before starting any task, you MUST identify which role you are acting in per `AGENTS.md`:
 
-1. **Test Author** -- writing or revising test suites (Phase 1 and Phase 3 of `TDD.md`). You MUST NOT write implementation code in this role.
-2. **Test Reviewer** -- reviewing a test suite for completeness and quality (Phase 2 of `TDD.md`). You MUST act adversarially, find weaknesses, and issue an explicit APPROVED or REJECTED verdict.
+1. **Test Author** -- writing or revising test suites (Phase 1 and Phase 3 of `AGENTS.md`). You MUST NOT write implementation code in this role.
+2. **Test Reviewer** -- reviewing a test suite for completeness and quality (Phase 2 of `AGENTS.md`). You MUST act adversarially, find weaknesses, and issue an explicit APPROVED or REJECTED verdict.
 
 When handling both roles in a single session, you MUST clearly declare role transitions and never blend authoring and reviewing in the same step.
 
@@ -91,7 +91,7 @@ When handling both roles in a single session, you MUST clearly declare role tran
 | `vitest.config.ts`      | Vitest + `typecheck` (tsc) configuration                                |
 | `agent.md`              | General AI agent guidelines                                             |
 | `claude.md`             | This file -- Claude-specific instructions                               |
-| `TDD.md`                | Mandatory TDD pipeline specification (4 phases)                         |
+| `AGENTS.md`             | Mandatory TDD pipeline, roles, and reviewer gates                       |
 | `AGENTS.md`             | Agent role definitions (Test Author, Test Reviewer)                     |
 
 ## Stable internals

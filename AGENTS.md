@@ -2,7 +2,7 @@
 
 This document defines the mandatory agent roles for the Rux TDD workflow. All AI agents operating on this codebase MUST comply with the role separation described here.
 
-For the full TDD pipeline, see `TDD.md`.
+Test-first workflow and reviewer gates are defined in this document.
 
 ---
 
@@ -114,6 +114,6 @@ When multiple agents or sessions are available, each role MUST be assigned to a 
 
 ## References
 
-- TDD pipeline specification: `TDD.md`
+- Test-first workflow and reviewer gates: this document
 - General project rules: `agent.md`
 - Claude-specific instructions: `claude.md`
