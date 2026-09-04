@@ -493,6 +493,30 @@ describe("createClient", () => {
     expect(configuredFetch).toHaveBeenCalledTimes(0);
   });
 
+  test("returns the pre-abort request error before constructing layered invalid headers", async () => {
+    const controller = new AbortController();
+    const abortReason = new Error("cancelled before invalid headers");
+    controller.abort(abortReason);
+    const configuredFetch = vi.fn(async () => jsonResponse({ ignored: true }));
+    const client = createClient({
+      baseUrl: "https://api.test",
+      request: { headers: { "x-client": "client" } },
+      fetch: configuredFetch,
+      endpoints: {
+        get: {
+          method: "GET",
+          path: "/users",
+          request: { headers: { "x-invalid": "invalid\nvalue" } },
+        },
+      },
+    });
+    await expect(client.get({ request: { signal: controller.signal, headers: { "x-invocation": "invocation" } } })).resolves.toEqual({
+      ok: false,
+      error: { type: "request", message: "cancelled before invalid headers", cause: abortReason },
+    });
+    expect(configuredFetch).toHaveBeenCalledTimes(0);
+  });
+
   test("does not invoke pending body validation or fetch when the caller signal is already aborted", async () => {
     vi.useFakeTimers();
     const controller = new AbortController();
