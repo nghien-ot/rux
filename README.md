@@ -220,7 +220,7 @@ Error variants:
 
 - `request`: invalid URL, invalid path parameters, body serialization, timeout, or caller abort.
 - `network`: fetch failed before receiving an HTTP response.
-- `http`: non-2xx response. `status` is always present. Without `error`, Rux parses JSON into `data: unknown`, falling back to raw response text when it is not JSON. With `error`, Rux requires valid JSON and validates it before returning typed `data`.
+- `http`: non-2xx response. `status` is always present. Without `error`, Rux parses JSON into `data: unknown`, falling back to raw response text when it is not JSON. With `error`, `data` is the validated parsed output of the configured schema.
 - `validation`: body, query, response, or error payload failed validation. `phase` identifies the boundary and `issues` contains Standard Schema issues.
 
 Response JSON is validated after parsing, so response transforms return parsed output. Empty successful responses return `undefined` when no response schema is configured. A non-empty successful response requires `response`; otherwise Rux returns a validation error. Invalid JSON returns a validation error.
@@ -265,7 +265,7 @@ Every endpoint returns `Promise<RuxResult<Success, Failure>>`. Failure values ha
 | --- | --- |
 | `request` | Invalid URL, path input, serialization, timeout, or caller abort |
 | `network` | Fetch failed before an HTTP response |
-| `http` | Non-2xx response; typed `data` is present when the endpoint has `error` |
+| `http` | Non-2xx response. Without `error`, `data` is parsed JSON when possible or raw text when not JSON. With `error`, `data` is the typed schema output. |
 | `validation` | Body, query, response, or typed error payload failed validation |
 
 ## Migration to v1

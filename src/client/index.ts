@@ -42,6 +42,15 @@ function mergeRequestOptions(...sources: Array<RequestOptions | undefined>): Req
   return merged;
 }
 
+function resolveRequestSignal(...sources: Array<RequestOptions | undefined>): AbortSignal | null | undefined {
+  let signal: AbortSignal | null | undefined;
+  for (const source of sources) {
+    if (!source || !("signal" in source)) continue;
+    signal = source.signal;
+  }
+  return signal;
+}
+
 function resolvePath(path: string, params: unknown): string | RuxResult<never> {
   const values = params !== null && typeof params === "object" ? params as Record<string, unknown> : {};
   let missing: string | undefined;
@@ -186,10 +195,8 @@ async function executeRequest<E extends EndpointDefinition>(
     params?: unknown;
     query?: unknown;
   }) | undefined;
-  const preAbortSignal = options?.request?.signal;
-  if (preAbortSignal?.aborted) {
-    return requestFailure(abortMessage(preAbortSignal.reason), preAbortSignal.reason);
-  }
+  const effectiveSignal = resolveRequestSignal(config.request, endpoint.request, options?.request);
+  if (effectiveSignal?.aborted) return requestFailure(abortMessage(effectiveSignal.reason), effectiveSignal.reason);
   const request = mergeRequestOptions(config.request, endpoint.request, options?.request);
   const headers = mergeHeaders(config.request?.headers, endpoint.request?.headers, options?.request?.headers);
   const timeoutMs = options?.timeoutMs ?? endpoint.timeoutMs ?? config.timeoutMs;
