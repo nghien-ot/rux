@@ -10,7 +10,7 @@
     "type-safe",
     "zero-runtime-dependencies"
   ],
-  "version": "0.1.2-dev",
+  "version": "0.1.3-dev",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nghien-ot/rux.git"
