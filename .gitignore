@@ -6,7 +6,9 @@ out
 dist
 *.tgz
 .worktrees/
-.superpowers/
+# agent scratch
+**/.superpowers/
+**/superpowers/
 
 # code coverage
 coverage
