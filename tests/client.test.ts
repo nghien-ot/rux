@@ -174,10 +174,17 @@ describe("createClient", () => {
 
     await vi.advanceTimersByTimeAsync(51);
 
-    await expect(result).resolves.toEqual({
+    const timeoutResult = await result;
+    expect(timeoutResult).toEqual({
       ok: false,
       error: { type: "request", message: "Request timed out", cause: expect.any(DOMException) },
     });
+    if ("guard" in timeoutResult) return;
+    if (timeoutResult.ok) return;
+    if (timeoutResult.error.type !== "request") return;
+    expect(timeoutResult.error.cause).toBeInstanceOf(DOMException);
+    expect((timeoutResult.error.cause as DOMException).name).toBe("TimeoutError");
+    expect((timeoutResult.error.cause as DOMException).message).toBe("Request timed out");
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
@@ -193,10 +200,17 @@ describe("createClient", () => {
 
     await vi.advanceTimersByTimeAsync(51);
 
-    await expect(result).resolves.toEqual({
+    const timeoutResult = await result;
+    expect(timeoutResult).toEqual({
       ok: false,
       error: { type: "request", message: "Request timed out", cause: expect.any(DOMException) },
     });
+    if ("guard" in timeoutResult) return;
+    if (timeoutResult.ok) return;
+    if (timeoutResult.error.type !== "request") return;
+    expect(timeoutResult.error.cause).toBeInstanceOf(DOMException);
+    expect((timeoutResult.error.cause as DOMException).name).toBe("TimeoutError");
+    expect((timeoutResult.error.cause as DOMException).message).toBe("Request timed out");
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
