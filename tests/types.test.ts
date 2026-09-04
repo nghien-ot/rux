@@ -98,6 +98,16 @@ test("client endpoint result is typed with success and HTTP failure payload", ()
   expectTypeOf<Extract<Result, { ok: false }>["error"]>().toEqualTypeOf<RuxError<{ code: string }>>();
 });
 
+test("endpoint without error schema carries unknown HTTP failure payload", () => {
+  const noError = createClient({
+    baseUrl: "https://api.test",
+    endpoints: { get: { method: "GET", path: "/users", response: responseSchema } },
+  });
+  type Result = Awaited<ReturnType<typeof noError.get>>;
+  expectTypeOf<Result>().toEqualTypeOf<RuxResult<{ id: number }, unknown>>();
+  expectTypeOf<Extract<Result, { ok: false }>["error"]>().toEqualTypeOf<RuxError>();
+});
+
 test("RuxError discriminates precise request, network, http, and validation fields", () => {
   type Failure = { code: string };
 

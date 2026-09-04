@@ -189,20 +189,52 @@ describe("createClient", () => {
     await expect(client.get()).resolves.toEqual({ ok: false, error: { type: "http", status: 404, message: "HTTP 404", data: { code: "NOT_FOUND" } } });
   });
 
-  test("returns typed HTTP error-body validation failure when error schema rejects", async () => {
+  test("returns error validation failure with error phase and HTTP status metadata when schema rejects", async () => {
     const error = schema(() => ({ issues: [{ message: "error body invalid", path: ["code"] }] }));
     const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users/1", error } } });
-    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 42 }, 422));
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ code: 42 }), { status: 422, statusText: "Unprocessable Entity" }));
+    const result = await client.get();
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.type).toBe("validation");
+    if (result.error.type !== "validation") return;
+    expect(result.error.message).toBe("error body invalid");
+    expect(result.error.issues).toEqual([{ message: "error body invalid", path: ["code"] }]);
+    expect(result.error.phase).toBe("error");
+    expect(result.error.status).toBe(422);
+  });
+
+  test("returns parsed JSON data for HTTP failure when no error schema exists", async () => {
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users/1" } } });
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ code: "RATE_LIMITED", retryAfter: 30 }), {
+      status: 429,
+      statusText: "Too Many Requests",
+      headers: { "content-type": "application/json" },
+    }));
     await expect(client.get()).resolves.toEqual({
       ok: false,
-      error: { type: "validation", message: "error body invalid", issues: [{ message: "error body invalid", path: ["code"] }] },
+      error: { type: "http", status: 429, message: "Too Many Requests", data: { code: "RATE_LIMITED", retryAfter: 30 } },
     });
   });
 
-  test("returns HTTP failure with status and text when no error schema exists", async () => {
+  test("returns raw response text as HTTP error data when no error schema exists", async () => {
     const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users/1" } } });
     fetchMock.mockResolvedValueOnce(new Response("gone", { status: 410, statusText: "Gone" }));
-    await expect(client.get()).resolves.toEqual({ ok: false, error: { type: "http", status: 410, message: "Gone" } });
+    await expect(client.get()).resolves.toEqual({ ok: false, error: { type: "http", status: 410, message: "Gone", data: "gone" } });
+  });
+
+  test("returns error validation failure with error phase and HTTP status when configured error JSON is invalid", async () => {
+    const error = schema<{ code: string }>((value) => ({ value: value as { code: string } }));
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users/1", error } } });
+    fetchMock.mockResolvedValueOnce(new Response("{not-json", { status: 400, statusText: "Bad Request" }));
+    const result = await client.get();
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.type).toBe("validation");
+    if (result.error.type !== "validation") return;
+    expect(result.error.message).toBe("Response body is not valid JSON");
+    expect(result.error.phase).toBe("error");
+    expect(result.error.status).toBe(400);
   });
 
   test.each([
@@ -211,7 +243,7 @@ describe("createClient", () => {
   ])("returns %s 5xx response as an HTTP failure", async (status, statusText) => {
     const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users/1" } } });
     fetchMock.mockResolvedValueOnce(new Response("server failure", { status, statusText }));
-    await expect(client.get()).resolves.toEqual({ ok: false, error: { type: "http", status, message: statusText } });
+    await expect(client.get()).resolves.toEqual({ ok: false, error: { type: "http", status, message: statusText, data: "server failure" } });
   });
 
   test("returns an invalid runtime HTTP method as a request error without calling fetch", async () => {
