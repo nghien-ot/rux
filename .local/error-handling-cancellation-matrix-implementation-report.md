@@ -2,7 +2,7 @@
 
 Status: complete
 
-Commit: pending
+Commit: `ded6dd0`
 
 ## Changes
 
@@ -39,4 +39,3 @@ Commit: pending
 
 - `npm pack --dry-run` depended on elevated permission because the local npm cache path returned `EPERM` in the default sandboxed run.
 - Git reported LF-to-CRLF warnings on the edited files, but no content or whitespace errors.
-
