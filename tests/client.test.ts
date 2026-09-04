@@ -151,14 +151,14 @@ describe("createClient", () => {
   test("returns body validation failure without calling fetch", async () => {
     const body = schema(() => ({ issues: [{ message: "body invalid", path: ["name"] }] }));
     const client = createClient({ baseUrl: "https://api.test", endpoints: { create: { method: "POST", path: "/users", body } } });
-    await expect(client.create({ body: { name: 1 } })).resolves.toEqual({ ok: false, error: { type: "validation", message: "body invalid", issues: [{ message: "body invalid", path: ["name"] }] } });
+    await expect(client.create({ body: { name: 1 } })).resolves.toEqual({ ok: false, error: { type: "validation", message: "body invalid", issues: [{ message: "body invalid", path: ["name"] }], phase: "body" } });
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
   test("returns query validation failure without calling fetch", async () => {
     const query = schema(() => ({ issues: [{ message: "query invalid", path: ["page"] }] }));
     const client = createClient({ baseUrl: "https://api.test", endpoints: { search: { method: "GET", path: "/search", query } } });
-    await expect(client.search({ query: { page: "not-a-number" } })).resolves.toEqual({ ok: false, error: { type: "validation", message: "query invalid", issues: [{ message: "query invalid", path: ["page"] }] } });
+    await expect(client.search({ query: { page: "not-a-number" } })).resolves.toEqual({ ok: false, error: { type: "validation", message: "query invalid", issues: [{ message: "query invalid", path: ["page"] }], phase: "query" } });
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
@@ -167,7 +167,7 @@ describe("createClient", () => {
     const client = createClient({ baseUrl: "https://api.test", endpoints: { create: { method: "POST", path: "/users", body } } });
     await expect(client.create({ body: input })).resolves.toEqual({
       ok: false,
-      error: { type: "validation", message: "body boundary invalid", issues: [{ message: "body boundary invalid", path: [] }] },
+      error: { type: "validation", message: "body boundary invalid", issues: [{ message: "body boundary invalid", path: [] }], phase: "body" },
     });
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });
@@ -177,7 +177,7 @@ describe("createClient", () => {
     const client = createClient({ baseUrl: "https://api.test", endpoints: { search: { method: "GET", path: "/search", query } } });
     await expect(client.search({ query: input })).resolves.toEqual({
       ok: false,
-      error: { type: "validation", message: "query boundary invalid", issues: [{ message: "query boundary invalid", path: [] }] },
+      error: { type: "validation", message: "query boundary invalid", issues: [{ message: "query boundary invalid", path: [] }], phase: "query" },
     });
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });
@@ -202,6 +202,13 @@ describe("createClient", () => {
     expect(result.error.issues).toEqual([{ message: "error body invalid", path: ["code"] }]);
     expect(result.error.phase).toBe("error");
     expect(result.error.status).toBe(422);
+    expect({ ...result.error }).toEqual({
+      type: "validation",
+      message: "error body invalid",
+      issues: [{ message: "error body invalid", path: ["code"] }],
+      phase: "error",
+      status: 422,
+    });
   });
 
   test("returns parsed JSON data for HTTP failure when no error schema exists", async () => {
@@ -272,7 +279,10 @@ describe("createClient", () => {
     const client = createClient({ baseUrl: "https://api.test", endpoints: { ping: { method: "GET", path: "/ping", response } } });
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
     const result = await client.ping();
-    expect(result).toEqual({ ok: false, error: { type: "validation", message: "Response body is empty" } });
+    expect(result).toEqual({
+      ok: false,
+      error: { type: "validation", message: "Response body is empty", issues: [], phase: "response" },
+    });
   });
 
   test("accepts a 204 response as undefined", async () => {
@@ -296,7 +306,7 @@ describe("createClient", () => {
   test("returns response schema failures as validation errors", async () => {
     const response = schema(() => ({ issues: [{ message: "response invalid", path: ["id"] }] }));
     const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/users", response } } });
-    await expect(client.get()).resolves.toEqual({ ok: false, error: { type: "validation", message: "response invalid", issues: [{ message: "response invalid", path: ["id"] }] } });
+    await expect(client.get()).resolves.toEqual({ ok: false, error: { type: "validation", message: "response invalid", issues: [{ message: "response invalid", path: ["id"] }], phase: "response" } });
   });
 
   test("returns invalid URL as a request error without calling fetch", async () => {
@@ -347,6 +357,29 @@ describe("createClient", () => {
     expect((requestSignal?.reason as DOMException).message).toBe("Request timed out");
   });
 
+  test("returns timeout when a configured HTTP error body remains pending", async () => {
+    vi.useFakeTimers();
+    const error = schema<{ code: string }>((value) => ({ value: value as { code: string } }));
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 504,
+      statusText: "Gateway Timeout",
+      text: () => new Promise<string>(() => {}),
+    } as Response);
+    const client = createClient({ baseUrl: "https://api.test", timeoutMs: 50, endpoints: { get: { method: "GET", path: "/slow", error } } });
+    const pending = client.get();
+    await vi.advanceTimersByTimeAsync(0);
+    const result = Promise.race([
+      pending,
+      new Promise<{ guard: true }>((resolve) => setTimeout(() => resolve({ guard: true }), 51)),
+    ]);
+    await vi.advanceTimersByTimeAsync(51);
+    await expect(result).resolves.toEqual({
+      ok: false,
+      error: { type: "request", message: "Request timed out", cause: expect.any(DOMException) },
+    });
+  });
+
   test("returns caller abort as a request error and preserves abort cause", async () => {
     const controller = new AbortController();
     const abortReason = new Error("cancelled by caller");
@@ -357,6 +390,28 @@ describe("createClient", () => {
     const pending = client.get({ request: { signal: controller.signal } });
     controller.abort(abortReason);
     await expect(pending).resolves.toEqual({ ok: false, error: { type: "request", message: "cancelled by caller", cause: abortReason } });
+  });
+
+  test("returns caller abort when an HTTP error body remains pending", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const abortReason = new Error("cancelled during body read");
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 499,
+      statusText: "Client Closed Request",
+      text: () => new Promise<string>(() => {}),
+    } as Response);
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { get: { method: "GET", path: "/slow" } } });
+    const pending = client.get({ request: { signal: controller.signal } });
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort(abortReason);
+    const result = Promise.race([
+      pending,
+      new Promise<{ guard: true }>((resolve) => setTimeout(() => resolve({ guard: true }), 1)),
+    ]);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(result).resolves.toEqual({ ok: false, error: { type: "request", message: "cancelled during body read", cause: abortReason } });
   });
 
   test("uses configured fetch implementation instead of global fetch", async () => {

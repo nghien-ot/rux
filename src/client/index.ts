@@ -23,14 +23,6 @@ function validationFailure(error: ValidationError): RuxResult<never> {
   return { ok: false, error };
 }
 
-function defineHidden<T extends object, K extends PropertyKey>(
-  target: T,
-  key: K,
-  value: unknown,
-): void {
-  Object.defineProperty(target, key, { value, enumerable: false });
-}
-
 function mergeHeaders(...sources: Array<RequestInit["headers"] | undefined>): Headers {
   const headers = new Headers();
   for (const source of sources) {
@@ -102,14 +94,11 @@ function createValidationError(
   const error = {
     type: "validation",
     message,
-    ...(options.issues === undefined ? {} : { issues: options.issues }),
+    issues: options.issues ?? [],
     ...(options.cause === undefined ? {} : { cause: options.cause }),
+    ...(options.phase === undefined ? {} : { phase: options.phase }),
+    ...(options.status === undefined ? {} : { status: options.status }),
   } as ValidationError;
-
-  if (options.issues === undefined) defineHidden(error, "issues", []);
-  if (options.phase !== undefined) defineHidden(error, "phase", options.phase);
-  if (options.status !== undefined) defineHidden(error, "status", options.status);
-
   return error;
 }
 
@@ -118,10 +107,32 @@ function attachValidationContext(
   context: ValidationContext,
 ): RuxResult<unknown> {
   if (!result.ok && result.error.type === "validation") {
-    defineHidden(result.error, "phase", context.phase);
-    if (context.status !== undefined) defineHidden(result.error, "status", context.status);
+    result.error.phase = context.phase;
+    if (context.status !== undefined) result.error.status = context.status;
   }
   return result;
+}
+
+function raceWithAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      cleanup();
+      reject(signal.reason);
+    };
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    signal.addEventListener("abort", onAbort, { once: true });
+    void promise.then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (cause) => {
+        cleanup();
+        reject(cause);
+      },
+    );
+  });
 }
 
 async function validateAt(
@@ -233,71 +244,83 @@ async function executeRequest<E extends EndpointDefinition>(
 
   let response: Response;
   try {
-    response = await (config.fetch ?? globalThis.fetch)(url.toString(), init);
-  } catch (cause) {
+    try {
+      response = await (config.fetch ?? globalThis.fetch)(url.toString(), init);
+    } catch (cause) {
+      if (controller.signal.aborted) {
+        const abortCause = controller.signal.reason;
+        return requestFailure(timedOut ? "Request timed out" : abortMessage(abortCause), abortCause);
+      }
+      return { ok: false, error: { type: "network", message: cause instanceof Error ? cause.message : "Network error", cause } };
+    }
+
     if (controller.signal.aborted) {
       const abortCause = controller.signal.reason;
       return requestFailure(timedOut ? "Request timed out" : abortMessage(abortCause), abortCause);
     }
-    return { ok: false, error: { type: "network", message: cause instanceof Error ? cause.message : "Network error", cause } };
+
+    try {
+      return await raceWithAbort((async () => {
+        if (!response.ok) {
+          if (!endpoint.error) {
+            let data: unknown;
+            let hasData = false;
+            try {
+              const text = await response.text();
+              try {
+                data = JSON.parse(text);
+              } catch {
+                data = text;
+              }
+              hasData = true;
+            } catch { /* preserve the HTTP failure when its body cannot be read */ }
+            return {
+              ok: false,
+              error: {
+                type: "http",
+                status: response.status,
+                message: response.statusText || `HTTP ${response.status}`,
+                ...(hasData ? { data } : {}),
+              },
+            };
+          }
+          const parsed = await parseJsonResponse(response, { phase: "error", status: response.status });
+          if (!parsed.ok) return parsed;
+          const errorResult = await validateAt(endpoint.error, parsed.value, { phase: "error", status: response.status });
+          if (!errorResult.ok) return errorResult;
+          return {
+            ok: false,
+            error: {
+              type: "http",
+              status: response.status,
+              message: response.statusText || `HTTP ${response.status}`,
+              data: errorResult.value,
+            },
+          };
+        }
+
+        const parsed = await parseJsonResponse(response, { phase: "response" });
+        if (!parsed.ok) return parsed;
+        if (parsed.value === undefined) {
+          if (!endpoint.response) return { ok: true, value: undefined };
+          return validationFailure(createValidationError("Response body is empty", { phase: "response" }));
+        }
+        if (!endpoint.response) {
+          return validationFailure(createValidationError("Response schema is required for a non-empty body", { phase: "response" }));
+        }
+        return validateAt(endpoint.response, parsed.value, { phase: "response" });
+      })(), controller.signal);
+    } catch (cause) {
+      if (controller.signal.aborted) {
+        const abortCause = controller.signal.reason;
+        return requestFailure(timedOut ? "Request timed out" : abortMessage(abortCause), abortCause);
+      }
+      throw cause;
+    }
   } finally {
     if (timer !== undefined) clearTimeout(timer);
     callerSignal?.removeEventListener("abort", onCallerAbort);
   }
-
-  if (controller.signal.aborted) {
-    const abortCause = controller.signal.reason;
-    return requestFailure(timedOut ? "Request timed out" : abortMessage(abortCause), abortCause);
-  }
-
-  if (!response.ok) {
-    if (!endpoint.error) {
-      let data: unknown;
-      let hasData = false;
-      try {
-        const text = await response.text();
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = text;
-        }
-        hasData = true;
-      } catch { /* preserve the HTTP failure when its body cannot be read */ }
-      return {
-        ok: false,
-        error: {
-          type: "http",
-          status: response.status,
-          message: response.statusText || `HTTP ${response.status}`,
-          ...(hasData ? { data } : {}),
-        },
-      };
-    }
-    const parsed = await parseJsonResponse(response, { phase: "error", status: response.status });
-    if (!parsed.ok) return parsed;
-    const errorResult = await validateAt(endpoint.error, parsed.value, { phase: "error", status: response.status });
-    if (!errorResult.ok) return errorResult;
-    return {
-      ok: false,
-      error: {
-        type: "http",
-        status: response.status,
-        message: response.statusText || `HTTP ${response.status}`,
-        data: errorResult.value,
-      },
-    };
-  }
-
-  const parsed = await parseJsonResponse(response, { phase: "response" });
-  if (!parsed.ok) return parsed;
-  if (parsed.value === undefined) {
-    if (!endpoint.response) return { ok: true, value: undefined };
-    return validationFailure(createValidationError("Response body is empty", { phase: "response" }));
-  }
-  if (!endpoint.response) {
-    return validationFailure(createValidationError("Response schema is required for a non-empty body", { phase: "response" }));
-  }
-  return validateAt(endpoint.response, parsed.value, { phase: "response" });
 }
 
 async function execute<E extends EndpointDefinition>(
