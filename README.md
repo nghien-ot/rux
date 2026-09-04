@@ -268,16 +268,6 @@ Every endpoint returns `Promise<RuxResult<Success, Failure>>`. Failure values ha
 | `http` | Non-2xx response. Without `error`, `data` is parsed JSON when possible or raw text when not JSON. With `error`, `data` is the typed schema output. |
 | `validation` | Body, query, response, or typed error payload failed validation |
 
-## Migration to v1
-
-- Replace `defineClient` with `createClient`.
-- Replace Rux plain-object schemas with Standard Schema v1 schemas. Zod is supported directly.
-- Remove `errorMode`, `defaultValue`, and unwrap helpers. Handle the returned `RuxResult` at every call site.
-- Move client, endpoint, and call transport settings into `request`; set credentials or authorization headers there. Rux has no auth-specific configuration.
-- Replace endpoint `headers` with `request.headers`; replace `queryParams` with an endpoint `query` schema and pass values through call `query`.
-
-No compatibility aliases are provided for removed APIs.
-
 ## Development
 
 ```bash
