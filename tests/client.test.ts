@@ -214,6 +214,130 @@ describe("createClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
+  test("returns timeout while successful response body read remains pending", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: () => new Promise<string>(() => {}),
+    } as Response);
+    const client = createClient({ baseUrl: "https://api.test", timeoutMs: 50, endpoints: { get: { method: "GET", path: "/slow" } } });
+    const pending = client.get();
+    const result = Promise.race([
+      pending,
+      new Promise<{ guard: true }>((resolve) => setTimeout(() => resolve({ guard: true }), 51)),
+    ]);
+
+    await vi.advanceTimersByTimeAsync(51);
+
+    const timeoutResult = await result;
+    expect(timeoutResult).toEqual({
+      ok: false,
+      error: { type: "request", message: "Request timed out", cause: expect.any(DOMException) },
+    });
+    if ("guard" in timeoutResult) return;
+    if (timeoutResult.ok) return;
+    if (timeoutResult.error.type !== "request") return;
+    expect(timeoutResult.error.cause).toBeInstanceOf(DOMException);
+    expect((timeoutResult.error.cause as DOMException).name).toBe("TimeoutError");
+    expect((timeoutResult.error.cause as DOMException).message).toBe("Request timed out");
+  });
+
+  test("returns timeout while async successful response validation remains pending", async () => {
+    vi.useFakeTimers();
+    const response = schema<{ id: number }>(() => new Promise<SchemaResult<{ id: number }>>(() => {}));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 7 }));
+    const client = createClient({ baseUrl: "https://api.test", timeoutMs: 50, endpoints: { get: { method: "GET", path: "/slow", response } } });
+    const pending = client.get();
+    const result = Promise.race([
+      pending,
+      new Promise<{ guard: true }>((resolve) => setTimeout(() => resolve({ guard: true }), 51)),
+    ]);
+
+    await vi.advanceTimersByTimeAsync(51);
+
+    const timeoutResult = await result;
+    expect(timeoutResult).toEqual({
+      ok: false,
+      error: { type: "request", message: "Request timed out", cause: expect.any(DOMException) },
+    });
+    if ("guard" in timeoutResult) return;
+    if (timeoutResult.ok) return;
+    if (timeoutResult.error.type !== "request") return;
+    expect(timeoutResult.error.cause).toBeInstanceOf(DOMException);
+    expect((timeoutResult.error.cause as DOMException).name).toBe("TimeoutError");
+    expect((timeoutResult.error.cause as DOMException).message).toBe("Request timed out");
+  });
+
+  test("returns timeout while async configured error validation remains pending", async () => {
+    vi.useFakeTimers();
+    const error = schema<{ code: string }>(() => new Promise<SchemaResult<{ code: string }>>(() => {}));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ code: "not_found" }, 404));
+    const client = createClient({ baseUrl: "https://api.test", timeoutMs: 50, endpoints: { get: { method: "GET", path: "/slow", error } } });
+    const pending = client.get();
+    const result = Promise.race([
+      pending,
+      new Promise<{ guard: true }>((resolve) => setTimeout(() => resolve({ guard: true }), 51)),
+    ]);
+
+    await vi.advanceTimersByTimeAsync(51);
+
+    const timeoutResult = await result;
+    expect(timeoutResult).toEqual({
+      ok: false,
+      error: { type: "request", message: "Request timed out", cause: expect.any(DOMException) },
+    });
+    if ("guard" in timeoutResult) return;
+    if (timeoutResult.ok) return;
+    if (timeoutResult.error.type !== "request") return;
+    expect(timeoutResult.error.cause).toBeInstanceOf(DOMException);
+    expect((timeoutResult.error.cause as DOMException).name).toBe("TimeoutError");
+    expect((timeoutResult.error.cause as DOMException).message).toBe("Request timed out");
+  });
+
+  test("returns caller abort while async body validation remains pending", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const abortReason = new Error("cancelled during body validation");
+    const body = schema<{ name: string }>(() => new Promise<SchemaResult<{ name: string }>>(() => {}));
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { create: { method: "POST", path: "/users", body } } });
+    const pending = client.create({ body: { name: "Ada" }, request: { signal: controller.signal } });
+    const result = Promise.race([
+      pending,
+      new Promise<{ guard: true }>((resolve) => setTimeout(() => resolve({ guard: true }), 1)),
+    ]);
+    controller.abort(abortReason);
+    await vi.advanceTimersByTimeAsync(1);
+
+    const abortResult = await result;
+    expect(abortResult).toEqual({
+      ok: false,
+      error: { type: "request", message: "cancelled during body validation", cause: abortReason },
+    });
+  });
+
+  test("returns caller abort while async query validation remains pending", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const abortReason = new Error("cancelled during query validation");
+    const query = schema<{ page: string }>(() => new Promise<SchemaResult<{ page: string }>>(() => {}));
+    const client = createClient({ baseUrl: "https://api.test", endpoints: { search: { method: "GET", path: "/search", query } } });
+    const pending = client.search({ query: { page: "1" }, request: { signal: controller.signal } });
+    const result = Promise.race([
+      pending,
+      new Promise<{ guard: true }>((resolve) => setTimeout(() => resolve({ guard: true }), 1)),
+    ]);
+    controller.abort(abortReason);
+    await vi.advanceTimersByTimeAsync(1);
+
+    const abortResult = await result;
+    expect(abortResult).toEqual({
+      ok: false,
+      error: { type: "request", message: "cancelled during query validation", cause: abortReason },
+    });
+  });
+
   test.each(boundaryInputs)("rejects %s body input through the required body schema", async (_label, input) => {
     const body = boundarySchema("body");
     const client = createClient({ baseUrl: "https://api.test", endpoints: { create: { method: "POST", path: "/users", body } } });
@@ -513,6 +637,54 @@ describe("createClient", () => {
     await expect(client.get({ request: { signal: controller.signal, headers: { "x-invocation": "invocation" } } })).resolves.toEqual({
       ok: false,
       error: { type: "request", message: "cancelled before invalid headers", cause: abortReason },
+    });
+    expect(configuredFetch).toHaveBeenCalledTimes(0);
+  });
+
+  test("returns the client-level pre-abort request error before constructing malformed layered headers", async () => {
+    const controller = new AbortController();
+    const abortReason = new Error("cancelled at client level");
+    controller.abort(abortReason);
+    const configuredFetch = vi.fn(async () => jsonResponse({ ignored: true }));
+    const client = createClient({
+      baseUrl: "https://api.test",
+      request: { signal: controller.signal, headers: { "x-client": "client" } },
+      fetch: configuredFetch,
+      endpoints: {
+        get: {
+          method: "GET",
+          path: "/users",
+          request: { headers: { "x-invalid": "invalid\nvalue" } },
+        },
+      },
+    });
+    await expect(client.get()).resolves.toEqual({
+      ok: false,
+      error: { type: "request", message: "cancelled at client level", cause: abortReason },
+    });
+    expect(configuredFetch).toHaveBeenCalledTimes(0);
+  });
+
+  test("returns the endpoint-level pre-abort request error before constructing malformed layered headers", async () => {
+    const controller = new AbortController();
+    const abortReason = new Error("cancelled at endpoint level");
+    controller.abort(abortReason);
+    const configuredFetch = vi.fn(async () => jsonResponse({ ignored: true }));
+    const client = createClient({
+      baseUrl: "https://api.test",
+      request: { headers: { "x-invalid": "invalid\nvalue" } },
+      fetch: configuredFetch,
+      endpoints: {
+        get: {
+          method: "GET",
+          path: "/users",
+          request: { signal: controller.signal, headers: { "x-endpoint": "endpoint" } },
+        },
+      },
+    });
+    await expect(client.get()).resolves.toEqual({
+      ok: false,
+      error: { type: "request", message: "cancelled at endpoint level", cause: abortReason },
     });
     expect(configuredFetch).toHaveBeenCalledTimes(0);
   });
