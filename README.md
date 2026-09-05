@@ -3,8 +3,6 @@
 [![npm package](https://img.shields.io/npm/v/%40nghien-ot%2Frux?logo=npm&label=npm)](https://www.npmjs.com/package/@nghien-ot/rux)
 [![GitHub repository](https://img.shields.io/badge/GitHub-rux-181717?logo=github)](https://github.com/nghien-ot/rux)
 
-Current package version: `0.2.1`
-
 A type-safe HTTP client for TypeScript. Rux validates through the [Standard Schema v1](https://standardschema.dev/) protocol and has no runtime dependencies.
 
 ## Install
