@@ -26,3 +26,16 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Typecheck and test build
         run: bun run test
+  branch-name:
+    name: Branch name
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate branch name
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+        run: |
+          if [[ ! "$BRANCH_NAME" =~ ^(feature|hotfix|fix|chore|docs|release)/[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+            echo "Invalid branch name: $BRANCH_NAME"
+            echo "Use <type>/<short-description>, for example feature/client-timeout."
+            exit 1
+          fi
