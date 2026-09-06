@@ -15,8 +15,6 @@ bun add @nghien-ot/rux
 # or: npm install @nghien-ot/rux
 ```
 
-Rux ships its TypeScript declarations at `dist/index.d.ts`. TypeScript 7 is used for Rux development, but Rux has no TypeScript peer dependency for consumers.
-
 ## `createClient`
 
 Define endpoints with a method, a path, and optional Standard Schema validators. Calls always resolve to `RuxResult`; inspect `ok` before reading `value`.
@@ -115,16 +113,16 @@ const api = createClient({
 
 Endpoint fields:
 
-| Field | Purpose |
-| --- | --- |
-| `method` | `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`. Method belongs to the endpoint. |
-| `path` | Relative path beginning with `/`. Typed parameters use `:name[string]`, `:name[number]`, or `:name[boolean]`. |
-| `request` | Endpoint-level `RequestInit` options, excluding `method` and `body`. |
-| `timeoutMs` | Endpoint timeout override. |
-| `query` | Standard Schema for query input. |
-| `body` | Standard Schema for `POST`, `PUT`, or `PATCH` body input. |
-| `response` | Standard Schema for successful JSON output. |
-| `error` | Standard Schema for non-2xx JSON error output. |
+| Field       | Purpose                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------- |
+| `method`    | `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`. Method belongs to the endpoint.                                   |
+| `path`      | Relative path beginning with `/`. Typed parameters use `:name[string]`, `:name[number]`, or `:name[boolean]`. |
+| `request`   | Endpoint-level `RequestInit` options, excluding `method` and `body`.                                          |
+| `timeoutMs` | Endpoint timeout override.                                                                                    |
+| `query`     | Standard Schema for query input.                                                                              |
+| `body`      | Standard Schema for `POST`, `PUT`, or `PATCH` body input.                                                     |
+| `response`  | Standard Schema for successful JSON output.                                                                   |
+| `error`     | Standard Schema for non-2xx JSON error output.                                                                |
 
 ### Call endpoints
 
@@ -264,12 +262,12 @@ const api = createClient({
 
 Every endpoint returns `Promise<RuxResult<Success, Failure>>`. Failure values have a typed `RuxError` with one of these variants:
 
-| Type | Meaning |
-| --- | --- |
-| `request` | Invalid URL, path input, serialization, timeout, or caller abort |
-| `network` | Fetch failed before an HTTP response |
-| `http` | Non-2xx response. Without `error`, `data` is parsed JSON when possible or raw text when not JSON. With `error`, `data` is the typed schema output. |
-| `validation` | Body, query, response, or typed error payload failed validation |
+| Type         | Meaning                                                                                                                                            |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `request`    | Invalid URL, path input, serialization, timeout, or caller abort                                                                                   |
+| `network`    | Fetch failed before an HTTP response                                                                                                               |
+| `http`       | Non-2xx response. Without `error`, `data` is parsed JSON when possible or raw text when not JSON. With `error`, `data` is the typed schema output. |
+| `validation` | Body, query, response, or typed error payload failed validation                                                                                    |
 
 ## License
 
