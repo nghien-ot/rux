@@ -6,6 +6,8 @@
 
 A type-safe HTTP client for TypeScript. Rux validates through the [Standard Schema v1](https://standardschema.dev/) protocol and has no runtime dependencies.
 
+See [CONTRIBUTION.md](CONTRIBUTION.md) for development and contribution rules. See [SECURITY.md](SECURITY.md) for vulnerability reporting and security responsibilities.
+
 ## Install
 
 ```bash
