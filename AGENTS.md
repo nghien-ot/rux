@@ -1,119 +1,125 @@
 # Rux -- Agent Role Definitions
 
-This document defines the mandatory agent roles for the Rux TDD workflow. All AI agents operating on this codebase MUST comply with the role separation described here.
+All agents working on Rux MUST follow this TDD workflow for runtime or public API changes. Contribution and security guidance live in `CONTRIBUTION.md` and `SECURITY.md`.
 
-Test-first workflow and reviewer gates are defined in this document.
+Rux is a declarative, type-safe HTTP client for TypeScript/Bun. This file is the single source for agent instructions; `CLAUDE.md` links here.
 
----
+## Hard constraints
 
-## Role 1: Test Author Agent
+- Do not invent features. Use approved tests, project docs, and explicit user requirements.
+- Do not add runtime dependencies without explicit approval. Rux currently has none.
+- Do not use `any` in public API types.
+- Do not create classes; use factory functions and plain objects.
+- Keep request body, query, response, and configured error payload validation in existing `validate` flow.
 
-**Purpose:** Define behavior through exhaustive test suites.
+## Test Author
 
-### Responsibilities
+Purpose: define behavior before implementation.
 
-- Write complete test suites that define the expected behavior of new features, bugfixes, or API changes.
-- Cover all public API methods, types, error modes, edge cases, and adversarial inputs.
-- Produce tests that are deterministic, self-contained, and implementation-independent.
-- Use **Vitest** exclusively (`describe`, `test`, `expect`, `beforeEach`, `afterEach` from `vitest`).
-- Use Vitest `expectTypeOf` for type-level assertions (e.g. `expectTypeOf<A>().toEqualTypeOf<B>()`, `expectTypeOf<T>().toBeNever()`), with `--typecheck` enabled.
-- Submit the test suite for review by the Test Reviewer Agent before any implementation begins.
+- Write deterministic, self-contained Vitest tests for public behavior, types, errors, boundaries, and adversarial inputs.
+- Use `describe`, `test`, `expect`, `beforeEach`, and `afterEach` from `vitest`.
+- Use `expectTypeOf` for type assertions and run with `--typecheck`.
+- Test through public APIs; do not assume private state, internal calls, or code paths.
+- Use exact assertions (`toBe`, `toEqual`, `toStrictEqual`) where possible.
+- Do not write implementation code or modify `src/` during test creation.
+- Submit tests for Test Reviewer approval before implementation.
 
-### Hard Constraints
+## Test Reviewer
 
-- MUST NOT write any implementation code during test creation.
-- MUST NOT modify files in `src/` during Phase 1.
-- MUST NOT embed implementation assumptions in tests (e.g., testing internal function calls, private state, or specific code paths).
-- MUST NOT use weak assertions (`toBeTruthy`, `toBeDefined`) where exact matching (`toBe`, `toEqual`) is possible.
-- MUST NOT skip adversarial and edge-case tests.
-- MUST address every issue raised by the Test Reviewer before resubmitting.
+Purpose: find gaps before implementation starts.
 
-### Owns
+- Check every requirement, public API path, type transformation, error mode, edge case, and adversarial input.
+- Reject weak assertions, implementation assumptions, skipped boundaries, and nondeterministic tests.
+- Do not write implementation code or lower standards to accelerate delivery.
+- Issue explicit `APPROVED` or `REJECTED` verdict.
+- A `REJECTED` verdict MUST list actionable issues. Re-review revisions.
 
-- **Phase 1** (Test Creation) of the TDD pipeline.
-- **Phase 3** (Revision Loop) -- authoring side.
+## Handoff protocol
 
----
-
-## Role 2: Test Reviewer Agent
-
-**Purpose:** Act as an adversarial validator to ensure test suite completeness and correctness.
-
-### Responsibilities
-
-- Review every test suite submitted by the Test Author.
-- Validate that the suite covers all behaviors described in the feature specification.
-- Detect missing edge cases, boundary conditions, and adversarial inputs.
-- Identify weak or vague assertions and demand stronger replacements.
-- Verify that no implementation assumptions are embedded in tests.
-- Attempt to break the test suite by reasoning about inputs and scenarios not covered.
-- Verify type-level tests cover all relevant type transformations.
-- Explicitly approve or reject the suite with itemized feedback.
-
-### Hard Constraints
-
-- MUST NOT approve a suite with known gaps or weak assertions.
-- MUST NOT write implementation code.
-- MUST NOT lower standards to accelerate delivery.
-- MUST NOT approve tests that assume internal implementation details.
-- MUST provide specific, actionable feedback for every rejection.
-- MUST re-review after the Test Author submits revisions.
-
-### Owns
-
-- **Phase 2** (Test Review) of the TDD pipeline.
-- **Phase 3** (Revision Loop) -- review side.
-
----
-
-## Handoff Protocol
-
-The following handoff sequence MUST be followed for every feature or change:
-
-```
-Test Author (Phase 1)
-  |
-  |-- submits test suite -->
-  |
-Test Reviewer (Phase 2)
-  |
-  |-- APPROVED --> Implementation may begin (Phase 4)
-  |-- REJECTED (with feedback) --> Test Author revises (Phase 3)
-  |                                  |
-  |                                  |-- resubmits -->
-  |                                  |
-  |                                Test Reviewer re-reviews (Phase 2)
-  |                                  |
-  |                                  ... (loop until approved)
+```text
+Test Author
+  -> submits tests
+Test Reviewer
+  -> APPROVED: implementation may begin
+  -> REJECTED: Test Author revises and resubmits
 ```
 
-### Handoff Rules
+Rules:
 
-1. The Test Author MUST NOT begin implementation until the Test Reviewer has explicitly stated approval.
-2. The Test Reviewer MUST provide a clear verdict: **APPROVED** or **REJECTED**.
-3. A **REJECTED** verdict MUST include an itemized list of issues.
-4. The Test Author MUST address every listed issue before resubmitting.
-5. The loop MUST continue until the Test Reviewer issues an **APPROVED** verdict with zero critical gaps.
-6. After approval, the agent performing implementation MUST NOT modify tests to fit the implementation. If a genuine specification error is discovered, the test MUST go back through Phase 2-3.
+1. Test Author MUST NOT start implementation before explicit `APPROVED`.
+2. Test Author MUST address every rejection item before resubmitting.
+3. After approval, implementation MUST NOT weaken or modify tests to fit code.
+4. If approved behavior is wrong, return tests to revision and review.
 
----
+## Documentation-only changes
 
-## Role Assignment in Practice
+Docs do not change runtime behavior, so no runtime test is required. Still review factual claims, links, command names, cross-references, security guidance, and line limits. Declare the active role when reviewing docs; keep authoring and review separate.
 
-When a single AI agent session handles both roles (e.g., a single conversation), the agent MUST:
+## Role use
 
-1. Clearly declare which role it is currently acting in (e.g., "Acting as Test Author" or "Acting as Test Reviewer").
-2. Maintain strict separation -- never blend authoring and reviewing in the same step.
-3. Complete Phase 1 fully before switching to the reviewer role.
-4. Produce an explicit APPROVED/REJECTED verdict when acting as reviewer.
-5. If rejected, switch back to the author role, revise, and resubmit.
+When one session handles both roles, declare each transition and complete one phase before the next. With multiple sessions, assign roles separately.
 
-When multiple agents or sessions are available, each role MUST be assigned to a separate agent or session. The handoff protocol above governs communication between them.
+## Evidence limits
 
----
+Source code shows current mechanics. Tests show tested behavior. Neither establishes product intent, compatibility promises, supported runtimes, release policy, threat model, maintainer approval, or whether an observed behavior is a bug.
+
+Agents MUST check docs, issue context, and explicit user requirements. If intent or security expectations remain unknown, ask a maintainer instead of inferring them from source code.
+
+## Branch naming
+
+Use `feature/` prefix for work branches unless user explicitly requests another name. Add meaningful grouping: `feature/<area>-<short-description>`; use a real area such as `docs`, `security`, `client`, or `schema`, not generic names such as `feature/work`.
+
+## Commit authorship
+
+Every agent-authored commit MUST include a valid `Co-authored-by: Name <email>` trailer. Use the agent identity supplied by the user or maintainer; if none is configured, ask before committing. Keep human author and agent co-author attribution accurate.
+
+## Code conventions
+
+- Read `src/types/index.ts` before changing the API.
+- Use named exports and `.ts` import extensions.
+- Reuse existing `RuxResult` internals, `validate`, error resolution, and request-layer patterns.
+- `RuxClient` maps endpoint definitions to methods. `EndpointDefinition` and `EndpointFn` changes propagate through that mapping.
+- `CallOptions` makes body support method-aware: `POST`, `PUT`, and `PATCH` support typed bodies; `GET` and `DELETE` do not.
+- Keep `executeRequest` signature stable unless explicitly required: `(config, endpoint, options)`.
+
+## API facts
+
+- Supported methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`.
+- Typed path segments use `:name[string]`, `:name[number]`, and `:name[boolean]`.
+- Calls resolve to `Promise<RuxResult<Success, Failure>>`; expected failures are not thrown.
+- `request`, `network`, `http`, and `validation` are distinct error variants.
+- `error` schemas type non-2xx payloads; without one, HTTP error data is `unknown`.
+- Authentication is not a client configuration feature. Callers may provide request headers themselves.
+
+## Build and package checks
+
+```bash
+bun install --frozen-lockfile
+bun run typecheck
+bun run test
+bun run build
+npm pack --dry-run
+```
+
+`tests/package.test.ts` checks the built package surface. Publishing requires `dist/index.d.ts`, referenced by package `types` and `exports`.
+
+## File map
+
+| File | Purpose |
+| --- | --- |
+| `src/index.ts` | Public barrel exports |
+| `src/types/index.ts` | Public types and mapped client types |
+| `src/schema/types.ts` | Standard Schema and schema utility types |
+| `src/schema/validate.ts` | Standard Schema validation |
+| `src/client/index.ts` | `createClient` and request execution |
+| `tests/*.test.ts` | Runtime and type-level tests |
+| `AGENTS.md` | Canonical agent instructions |
+| `CLAUDE.md` | Symlink to `AGENTS.md` |
+| `CONTRIBUTION.md` | Contributor workflow |
+| `SECURITY.md` | Security reporting and responsibilities |
 
 ## References
 
-- Test-first workflow and reviewer gates: this document
-- General project rules: `agent.md`
-- Claude-specific instructions: `claude.md`
+- Contribution workflow: `CONTRIBUTION.md`
+- Security policy: `SECURITY.md`
+- Claude-specific instructions: `CLAUDE.md`
