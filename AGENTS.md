@@ -67,7 +67,7 @@ Agents MUST check docs, issue context, and explicit user requirements. If intent
 
 ## Branch naming
 
-Use `feature/` prefix for work branches unless user explicitly requests another name.
+Use `feature/` prefix for work branches unless user explicitly requests another name. Add meaningful grouping: `feature/<area>-<short-description>`; use a real area such as `docs`, `security`, `client`, or `schema`, not generic names such as `feature/work`.
 
 ## Code conventions
 
