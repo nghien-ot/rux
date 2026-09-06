@@ -271,20 +271,6 @@ Every endpoint returns `Promise<RuxResult<Success, Failure>>`. Failure values ha
 | `http` | Non-2xx response. Without `error`, `data` is parsed JSON when possible or raw text when not JSON. With `error`, `data` is the typed schema output. |
 | `validation` | Body, query, response, or typed error payload failed validation |
 
-## Development
-
-```bash
-bun install --frozen-lockfile
-bun run typecheck
-bun run test
-bun run build
-npm pack --dry-run
-```
-
-`tests/package.test.ts` smoke-tests the published package surface after `bun run build`.
-
-The build must produce `dist/index.d.ts` before publishing. This file is referenced by the package `types` and `exports` fields.
-
 ## License
 
 [MIT](LICENSE)
