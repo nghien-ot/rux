@@ -2,12 +2,14 @@
 
 Rux is a type-safe TypeScript HTTP client with zero runtime dependencies.
 
-## Before you start
+## Start contributing
 
-- Read `README.md`, `AGENTS.md`, and `CLAUDE.md`.
-- Check existing issues and tests before proposing behavior changes.
-- Keep changes focused. Do not add runtime dependencies without maintainer approval.
-- Do not include secrets, private URLs, or real user data in issues, tests, or commits.
+1. Read `README.md`, `AGENTS.md`, and `CLAUDE.md`.
+2. Check existing issues, source, and tests before proposing behavior changes.
+3. Create a branch using `feature/<area>-<short-description>`.
+4. Install dependencies with `bun install --frozen-lockfile`.
+5. Make a focused change and run the checks below.
+6. Open a pull request with the required details and co-author trailer.
 
 ## Development setup
 
@@ -22,6 +24,10 @@ npm pack --dry-run
 ```
 
 `bun run test` builds the package and runs Vitest with type checking. `tests/package.test.ts` checks the built package surface. `dist/index.d.ts` must exist before publishing.
+
+## Avoid duplicate code
+
+Search `src/` and `tests/` before adding code. Reuse existing helpers, types, validation, request-layer behavior, and test patterns. Do not copy similar logic into another caller. Extend or extract shared code only when existing code cannot support the requirement; explain that decision in the pull request.
 
 ## Change workflow
 
@@ -50,7 +56,7 @@ Every agent-assisted commit MUST include a valid `Co-authored-by: Name <email>` 
 - Preserve factory functions and plain objects; do not add classes.
 - Keep public types free of `any`.
 - Validate request body, query, response, and configured error payloads through existing validation paths.
-- Reuse installed dependencies and existing patterns.
+- Reuse installed dependencies and existing patterns; do not duplicate code.
 - Keep `executeRequest` signature stable unless the change explicitly requires otherwise.
 
 ## What source code cannot tell you
