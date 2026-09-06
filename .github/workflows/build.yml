@@ -26,7 +26,6 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Typecheck and test build
         run: bun run test
-
   branch-name:
     name: Branch name
     if: github.event_name == 'push'
