@@ -6,7 +6,7 @@ Rux is a type-safe TypeScript HTTP client with zero runtime dependencies.
 
 1. Read `README.md`, `AGENTS.md`, and `CLAUDE.md`.
 2. Check existing issues, source, and tests before proposing behavior changes.
-3. Create a branch using `feature/<area>-<short-description>`.
+3. Create a branch using `<type>/<area>-<short-description>`.
 4. Install dependencies with `bun install --frozen-lockfile`.
 5. Make a focused change and run the checks below.
 6. Open a pull request with the required details and co-author trailer.
@@ -44,7 +44,11 @@ Documentation-only changes do not need runtime tests, but must pass the review c
 
 ## Branch naming
 
-Use `feature/<area>-<short-description>` for work branches. Choose meaningful grouping such as `docs`, `security`, `client`, or `schema`; avoid generic names such as `feature/work`.
+Use `<type>/<area>-<short-description>` for work branches. Allowed types: `feature`, `hotfix`, `fix`, `chore`, `docs`, and `release`. Choose meaningful grouping such as `feature/client-timeout` or `docs/security-policy`; avoid generic names such as `feature/work`. GitHub validates this through the required `Branch name` status check.
+
+## Code ownership
+
+`CODEOWNERS` assigns `@McPepperoni` as owner for every file. Pull requests require a code-owner review before merge.
 
 ## Commit authorship
 

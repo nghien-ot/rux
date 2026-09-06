@@ -67,7 +67,7 @@ Agents MUST check docs, issue context, and explicit user requirements. If intent
 
 ## Branch naming
 
-Use `feature/` prefix for work branches unless user explicitly requests another name. Add meaningful grouping: `feature/<area>-<short-description>`; use a real area such as `docs`, `security`, `client`, or `schema`, not generic names such as `feature/work`.
+Use `<type>/<area>-<short-description>` for work branches unless user explicitly requests another name. Allowed types: `feature`, `hotfix`, `fix`, `chore`, `docs`, and `release`. Use meaningful grouping such as `feature/client-timeout` or `docs/security-policy`; avoid generic names such as `feature/work`. GitHub enforces this through the `Branch name` status check.
 
 ## Commit authorship
 
