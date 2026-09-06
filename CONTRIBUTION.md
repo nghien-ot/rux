@@ -36,6 +36,14 @@ Tests are the behavior contract. Do not weaken or delete a test to fit an implem
 
 Documentation-only changes do not need runtime tests, but must pass the review checklist below.
 
+## Branch naming
+
+Use `feature/<area>-<short-description>` for work branches. Choose meaningful grouping such as `docs`, `security`, `client`, or `schema`; avoid generic names such as `feature/work`.
+
+## Commit authorship
+
+Every agent-assisted commit MUST include a valid `Co-authored-by: Name <email>` trailer. Use identity supplied by the user or maintainer. If no agent identity is configured, confirm it before committing. Keep author and co-author attribution accurate.
+
 ## Project conventions
 
 - Use named exports and `.ts` import extensions.
@@ -60,6 +68,7 @@ Include:
 - Public API or compatibility impact.
 - Security or data-handling impact, if any.
 - Any unresolved assumption or follow-up.
+- Required `Co-authored-by:` trailer for agent-assisted commits.
 
 Keep generated `dist` output out of commits unless maintainers request it. Use specific commit messages. Review your diff for accidental files and secrets before submitting.
 

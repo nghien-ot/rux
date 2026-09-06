@@ -69,6 +69,10 @@ Agents MUST check docs, issue context, and explicit user requirements. If intent
 
 Use `feature/` prefix for work branches unless user explicitly requests another name. Add meaningful grouping: `feature/<area>-<short-description>`; use a real area such as `docs`, `security`, `client`, or `schema`, not generic names such as `feature/work`.
 
+## Commit authorship
+
+Every agent-authored commit MUST include a valid `Co-authored-by: Name <email>` trailer. Use the agent identity supplied by the user or maintainer; if none is configured, ask before committing. Keep human author and agent co-author attribution accurate.
+
 ## Code conventions
 
 - Read `src/types/index.ts` before changing the API.
