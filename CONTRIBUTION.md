@@ -52,7 +52,7 @@ Use `<type>/<area>-<short-description>` for work branches. Allowed types: `featu
 
 ## Commit authorship
 
-Every agent-assisted commit MUST include a valid `Co-authored-by: Name <email>` trailer. Use identity supplied by the user or maintainer. If no agent identity is configured, confirm it before committing. Keep author and co-author attribution accurate.
+For AI-authored or AI-modified work, follow the [commit authorship rules in AGENTS.md](AGENTS.md#commit-authorship), including each responsible AI's co-author trailer.
 
 ## Project conventions
 

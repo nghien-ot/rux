@@ -71,7 +71,9 @@ Use `<type>/<area>-<short-description>` for work branches unless user explicitly
 
 ## Commit authorship
 
-Every agent-authored commit MUST include a valid `Co-authored-by: Name <email>` trailer. Use the agent identity supplied by the user or maintainer; if none is configured, ask before committing. Keep human author and agent co-author attribution accurate.
+Every commit containing AI-authored or AI-modified work MUST credit each responsible AI with a separate `Co-authored-by: Name <email>` trailer. Preserve these trailers when merging or squashing commits, and keep human authorship accurate. Use the AI's configured or maintainer-approved identity; if none is known, ask before committing.
+
+OpenAI Codex identity: `Co-authored-by: OpenAI Codex <codex@openai.com>`.
 
 ## Code conventions
 
